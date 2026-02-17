@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="Northwestern-style logo placeholder">
+  <defs>
+    <linearGradient id="g" x1="0" x2="1">
+      <stop offset="0" stop-color="#4E2A84"/>
+      <stop offset="1" stop-color="#3B1E63"/>
+    </linearGradient>
+  </defs>
+  <circle cx="60" cy="60" r="56" fill="url(#g)" />
+  <circle cx="60" cy="60" r="56" fill="none" stroke="white" stroke-opacity="0.25" stroke-width="2"/>
+  <path d="M42 82V38h10l16 26V38h10v44H68L52 56v26H42z" fill="white"/>
+</svg>
