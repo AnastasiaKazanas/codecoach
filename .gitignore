@@ -1,0 +1,23 @@
+# macOS
+.DS_Store
+
+# Node
+**/node_modules/
+**/.next/
+**/dist/
+**/.turbo/
+**/.cache/
+
+# VS Code extension test
+**/.vscode-test/
+
+# Env files
+**/.env
+**/.env.local
+**/.env.*.local
+
+# Logs
+**/*.log
+
+# Database
+**/*.db
