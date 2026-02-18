@@ -1,17 +1,19 @@
+cat > .gitignore <<'EOF'
 # macOS
 .DS_Store
 
-# Node
+# Node / builds
 **/node_modules/
 **/.next/
 **/dist/
+**/out/
 **/.turbo/
 **/.cache/
 
-# VS Code extension test
+# VS Code extension testing artifacts
 **/.vscode-test/
 
-# Env files
+# Env / secrets
 **/.env
 **/.env.local
 **/.env.*.local
@@ -19,5 +21,6 @@
 # Logs
 **/*.log
 
-# Database
+# DB / sqlite
 **/*.db
+EOF
