@@ -1,44 +1,27 @@
-// codecoach-web/app/instructor/course/[id]/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import AppShell from "@/components/AppShell";
-import { useParams } from "next/navigation";
-import {
-  getCourse,
-  getCourseAssignments,
-  getRoster,
-  getSubmissionsForCourse,
-  seedIfNeeded,
-} from "@/lib/mockDb";
+import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { getCourse, seedIfNeeded } from "@/lib/mockDb";
 
-export default function InstructorCoursePage() {
+export default function InstructorCourseHubPage() {
   const params = useParams();
+  const router = useRouter();
   const courseId = params.id as string;
 
   const [course, setCourse] = useState<any>(null);
-  const [assignments, setAssignments] = useState<any[]>([]);
-  const [roster, setRoster] = useState<string[]>([]);
-  const [submissions, setSubmissions] = useState<any[]>([]);
   const [err, setErr] = useState<string | null>(null);
 
-  function refresh() {
+  useEffect(() => {
     try {
       seedIfNeeded();
       setCourse(getCourse(courseId));
-      setAssignments(getCourseAssignments(courseId));
-      setRoster(getRoster(courseId));
-      setSubmissions(getSubmissionsForCourse(courseId));
       setErr(null);
     } catch (e: any) {
       setErr(e?.message ?? "Failed to load course.");
     }
-  }
-
-  useEffect(() => {
-    refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseId]);
 
   return (
@@ -51,63 +34,41 @@ export default function InstructorCoursePage() {
             <div className="card p-6">
               <div className="text-xl font-bold">{course.title}</div>
               <div className="mt-1 text-sm text-black/60">
-                {course.term} • Join code: <span className="font-semibold">{course.joinCode}</span>
+                {course.term} • Join code:{" "}
+                <span className="font-semibold">{course.joinCode}</span>
               </div>
             </div>
 
-            <div className="grid gap-6 md:grid-cols-2">
-              <div className="card p-4">
+            <div className="grid gap-3 md:grid-cols-3">
+              <button
+                className="card p-5 text-left hover:bg-black/5 transition"
+                onClick={() => router.push(`/instructor/course/${courseId}/roster`)}
+              >
                 <div className="text-sm font-semibold">Roster</div>
-                {roster.length === 0 ? (
-                  <div className="mt-2 text-sm text-black/60">No students enrolled yet.</div>
-                ) : (
-                  <ul className="mt-2 text-sm list-disc ml-5">
-                    {roster.map((email) => (
-                      <li key={email}>{email}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-
-              <div className="card p-4">
-                <div className="text-sm font-semibold">Submissions</div>
-                {submissions.length === 0 ? (
-                  <div className="mt-2 text-sm text-black/60">No submissions yet.</div>
-                ) : (
-                  <div className="mt-2 grid gap-2 text-sm">
-                    {submissions.map((s) => (
-                      <div key={`${s.assignmentId}-${s.studentEmail}`} className="rounded-xl border border-black/10 p-3">
-                        <div className="font-semibold">{s.studentEmail}</div>
-                        <div className="text-black/60 text-xs">
-                          Assignment: {s.assignmentId} • {new Date(s.submittedAtISO).toLocaleString()}
-                        </div>
-                        <div className="mt-2 text-xs text-black/70">
-                          Trace events: {s.traceCount} • Summary: {s.summarySnippet || "(none)"}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="text-sm font-semibold">Assignments</div>
-              {assignments.length === 0 ? (
-                <div className="text-sm text-black/60">No assignments yet.</div>
-              ) : (
-                <div className="grid gap-3">
-                  {assignments.map((a) => (
-                    <div key={a.id} className="card p-4">
-                      <div className="text-base font-bold">{a.title}</div>
-                      <div className="mt-2 text-sm text-black/70 whitespace-pre-wrap">{a.instructions}</div>
-                      <div className="mt-3 text-xs text-black/60">
-                        <span className="font-semibold">Fundamentals:</span> {a.fundamentals.join(", ")}
-                      </div>
-                    </div>
-                  ))}
+                <div className="mt-1 text-sm text-black/60">
+                  View students and their class profiles
                 </div>
-              )}
+              </button>
+
+              <button
+                className="card p-5 text-left hover:bg-black/5 transition"
+                onClick={() => router.push(`/instructor/course/${courseId}/assignments`)}
+              >
+                <div className="text-sm font-semibold">Assignments</div>
+                <div className="mt-1 text-sm text-black/60">
+                  View active assignments and submissions
+                </div>
+              </button>
+
+              <button
+                className="card p-5 text-left hover:bg-black/5 transition"
+                onClick={() => router.push(`/instructor/course/${courseId}/assignments/new`)}
+              >
+                <div className="text-sm font-semibold">Create assignment</div>
+                <div className="mt-1 text-sm text-black/60">
+                  Add a new assignment to this course
+                </div>
+              </button>
             </div>
           </div>
         ) : (

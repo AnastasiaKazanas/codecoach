@@ -7,6 +7,7 @@ import { clearAuth, getAuth } from "@/lib/storage";
 function NavItem({ href, label }: { href: string; label: string }) {
   const pathname = usePathname();
   const active = pathname === href || pathname.startsWith(href + "/");
+
   return (
     <Link
       href={href}
@@ -21,7 +22,13 @@ function NavItem({ href, label }: { href: string; label: string }) {
   );
 }
 
-export default function AppShell({ title, children }: { title: string; children: React.ReactNode }) {
+export default function AppShell({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
   const router = useRouter();
   const auth = getAuth();
 
@@ -31,7 +38,7 @@ export default function AppShell({ title, children }: { title: string; children:
   return (
     <div className="min-h-screen bg-[#F7F6FB]">
       <header className="border-b border-black/5 bg-white">
-        <div className="mx-auto max-w-6xl px-8 py-6 flex items-center justify-between">
+        <div className="mx-auto max-w-5xl px-6 sm:px-10 lg:px-16 py-6 flex items-center justify-between">
           <div>
             <div className="text-lg font-extrabold">CodeCoach</div>
             <div className="text-sm text-black/50">Academic workspace</div>
@@ -53,7 +60,7 @@ export default function AppShell({ title, children }: { title: string; children:
         </div>
       </header>
 
-      <div className="mx-auto max-w-6xl px-8 py-10 grid grid-cols-12 gap-10">
+      <div className="mx-auto max-w-5xl px-6 sm:px-10 lg:px-16 py-10 grid grid-cols-12 gap-10">
         <aside className="col-span-12 md:col-span-3 space-y-3">
           <NavItem href="/dashboard" label="Dashboard" />
           {isStudent ? <NavItem href="/student" label="My Courses" /> : null}
@@ -66,7 +73,7 @@ export default function AppShell({ title, children }: { title: string; children:
             <h1 className="text-3xl font-extrabold tracking-tight">{title}</h1>
           </div>
 
-          <div className="card p-8">{children}</div>
+          <div className="card p-6 sm:p-8 overflow-hidden">{children}</div>
         </main>
       </div>
     </div>

@@ -1,4 +1,3 @@
-// codecoach-web/lib/mockDb.ts
 export type Role = "student" | "instructor";
 
 export type Course = {
@@ -9,13 +8,38 @@ export type Course = {
   ownerEmail: string; // instructor email
 };
 
+export type ResourceLink = { title: string; url: string };
+
+export type StarterFileAsset = {
+  path: string;
+  filename: string;
+  mime: string;
+  dataUrl: string;  
+};
+
+export type StarterBundle = {
+  files: StarterFile[];
+};
+
+export type StarterAsset = {
+  filename: string;
+  mime: string;
+  dataUrl: string; // base64 data URL (MVP)
+};
+
 export type Assignment = {
   id: string;
   courseId: string;
   title: string;
-  instructions: string;
+
+  instructionsHtml: string;
+  instructions?: string;
+
   fundamentals: string[];
   objectives: string[];
+
+  tutorialUrl?: string;
+  starterCode?: StarterAsset | null;
 };
 
 export type Enrollment = {
@@ -31,18 +55,36 @@ export type Submission = {
   summarySnippet: string;
 };
 
+export type CourseProfile = {
+  courseId: string;
+  studentEmail: string;
+  updatedAtISO: string;
+  topics: string[];
+  mastered: string[];
+  developing: string[];
+  notes: string;
+};
+
 type DB = {
   courses: Course[];
   assignments: Assignment[];
   enrollments: Enrollment[];
   submissions: Submission[];
+  profiles: CourseProfile[]; // ✅ NEW
   seeded: boolean;
 };
 
 const KEY = "codecoach.mockdb.v1";
 
 function empty(): DB {
-  return { courses: [], assignments: [], enrollments: [], submissions: [], seeded: false };
+  return {
+    courses: [],
+    assignments: [],
+    enrollments: [],
+    submissions: [],
+    profiles: [],
+    seeded: false,
+  };
 }
 
 function load(): DB {
@@ -50,7 +92,13 @@ function load(): DB {
   const raw = localStorage.getItem(KEY);
   if (!raw) return empty();
   try {
-    return JSON.parse(raw) as DB;
+    const parsed = JSON.parse(raw) as Partial<DB>;
+    // Backwards compatible if old DB had no profiles:
+    return {
+      ...empty(),
+      ...parsed,
+      profiles: Array.isArray(parsed.profiles) ? parsed.profiles : [],
+    };
   } catch {
     return empty();
   }
@@ -68,85 +116,41 @@ function mkJoinCode(prefix: string) {
   return `NU-${prefix}-${Math.floor(100 + Math.random() * 900)}`;
 }
 
+function uniq(arr: string[]) {
+  return Array.from(new Set((arr || []).map((s) => (s ?? "").toString().trim()).filter(Boolean)));
+}
+
+function mergeProfile(oldP: CourseProfile, patch: Partial<CourseProfile>): CourseProfile {
+  const mastered = uniq([...(oldP.mastered || []), ...((patch.mastered as string[]) || [])]);
+  const developingRaw = uniq([...(oldP.developing || []), ...((patch.developing as string[]) || [])]);
+  const developing = developingRaw.filter((x) => !mastered.includes(x));
+  const topics = uniq([...(oldP.topics || []), ...((patch.topics as string[]) || [])]);
+
+  return {
+    ...oldP,
+    updatedAtISO: new Date().toISOString(),
+    mastered,
+    developing,
+    topics,
+    notes: typeof patch.notes === "string" && patch.notes.trim() ? patch.notes : oldP.notes,
+  };
+}
+
+function hasNewDemoSeed(db: DB) {
+  const codes = new Set(db.courses.map((c) => c.joinCode));
+  return codes.has("NU-CS336-101") && codes.has("NU-CS213-202") && codes.has("NU-GEN-303");
+}
+
 export function seedIfNeeded() {
   const db = load();
   if (db.seeded) return;
 
-  const ownerEmail = "prof@northwestern.edu";
+  db.courses = Array.isArray(db.courses) ? db.courses : [];
+  db.assignments = Array.isArray(db.assignments) ? db.assignments : [];
+  db.enrollments = Array.isArray(db.enrollments) ? db.enrollments : [];
+  db.submissions = Array.isArray(db.submissions) ? db.submissions : [];
+  db.profiles = Array.isArray((db as any).profiles) ? (db as any).profiles : [];
 
-  const c1: Course = {
-    id: "CS336",
-    title: "CS 336 — Design & Analysis of Algorithms",
-    term: "Winter 2026",
-    joinCode: "NU-CS336-101",
-    ownerEmail,
-  };
-
-  const c2: Course = {
-    id: "CS213",
-    title: "CS 213 — Computer Systems",
-    term: "Winter 2026",
-    joinCode: "NU-CS213-202",
-    ownerEmail,
-  };
-
-  const c3: Course = {
-    id: "GEN",
-    title: "Debugging Workshop",
-    term: "Winter 2026",
-    joinCode: "NU-GEN-303",
-    ownerEmail,
-  };
-
-  const a1: Assignment = {
-    id: "cs336-hw-greedy-1",
-    courseId: "CS336",
-    title: "CS 336 — Greedy Scheduling (Demo)",
-    fundamentals: ["Greedy choice", "Exchange argument", "Runtime: sorting + scan"],
-    objectives: ["Choose a greedy strategy", "Explain correctness (exchange argument)", "Analyze runtime"],
-    instructions: [
-      "You are given intervals (start, finish).",
-      "Pick a maximum-size subset of non-overlapping intervals.",
-      "Explain *why* your greedy choice is optimal using an exchange argument.",
-      "Do not paste full solution code. Use pseudocode or a toy example.",
-    ].join("\n"),
-  };
-
-  const a2: Assignment = {
-    id: "cs213-asm-stack-1",
-    courseId: "CS213",
-    title: "CS 213 — Stack Frames & Calling Convention (Demo)",
-    fundamentals: ["SysV AMD64 calling convention", "Stack frames", "rsp movement"],
-    objectives: [
-      "Explain what push/pop do to rsp",
-      "Identify arg registers vs return register",
-      "Reason about local stack allocation",
-    ],
-    instructions: [
-      "Given a short x86-64 snippet, explain the stack frame setup/teardown.",
-      "Identify where arguments are passed (registers/stack).",
-      "Explain what 'sub $0x20, %rsp' implies.",
-    ].join("\n"),
-  };
-
-  const a3: Assignment = {
-    id: "general-debugging-1",
-    courseId: "GEN",
-    title: "Debugging Mindset — Minimal Repro (Demo)",
-    fundamentals: ["Hypothesis-driven debugging", "Binary search debugging", "Logging"],
-    objectives: ["Create a minimal repro", "Isolate the variable that changes behavior"],
-    instructions: [
-      "Describe the bug in one sentence.",
-      "List 3 hypotheses.",
-      "Explain the fastest experiment to rule out each hypothesis.",
-      "Write a minimal reproduction step-by-step.",
-    ].join("\n"),
-  };
-
-  db.courses = [c1, c2, c3];
-  db.assignments = [a1, a2, a3];
-  db.enrollments = []; // students join by code
-  db.submissions = [];
   db.seeded = true;
   save(db);
 }
@@ -189,6 +193,55 @@ export function getAssignment(assignmentId: string) {
   return a;
 }
 
+/* PROFILES */
+export function getCourseProfile(courseId: string, studentEmail: string): CourseProfile {
+  const db = load();
+  const existing = db.profiles.find((p) => p.courseId === courseId && p.studentEmail === studentEmail);
+  if (existing) return existing;
+
+  const created: CourseProfile = {
+    courseId,
+    studentEmail,
+    updatedAtISO: new Date().toISOString(),
+    topics: [],
+    mastered: [],
+    developing: [],
+    notes: "",
+  };
+  db.profiles.push(created);
+  save(db);
+  return created;
+}
+
+export function upsertCourseProfile(
+  courseId: string,
+  studentEmail: string,
+  update: Partial<Pick<CourseProfile, "topics" | "mastered" | "developing" | "notes">>
+) {
+  const db = load();
+  const idx = db.profiles.findIndex((p) => p.courseId === courseId && p.studentEmail === studentEmail);
+
+  if (idx < 0) {
+    const created: CourseProfile = {
+      courseId,
+      studentEmail,
+      updatedAtISO: new Date().toISOString(),
+      topics: uniq(update.topics || []),
+      mastered: uniq(update.mastered || []),
+      developing: uniq(update.developing || []),
+      notes: (update.notes || "").toString(),
+    };
+    db.profiles.push(created);
+    save(db);
+    return created;
+  }
+
+  const merged = mergeProfile(db.profiles[idx], update as any);
+  db.profiles[idx] = merged;
+  save(db);
+  return merged;
+}
+
 /* INSTRUCTOR */
 export function createCourse(ownerEmail: string, title: string, term: string) {
   const db = load();
@@ -220,10 +273,29 @@ export function getSubmissionsForCourse(courseId: string) {
   return db.submissions.filter((s) => assignmentIds.has(s.assignmentId));
 }
 
-/* OPTIONAL: add instructor ability to create assignments */
-export function createAssignment(courseId: string, payload: Omit<Assignment, "id" | "courseId">) {
+export function getSubmissionsForStudentInCourse(courseId: string, studentEmail: string) {
   const db = load();
-  // validate course exists
+  const assignmentIds = new Set(db.assignments.filter((a) => a.courseId === courseId).map((a) => a.id));
+  return db.submissions.filter((s) => s.studentEmail === studentEmail && assignmentIds.has(s.assignmentId));
+}
+
+export function getSubmissionsForAssignment(assignmentId: string) {
+  const db = load();
+  return db.submissions.filter((s) => s.assignmentId === assignmentId);
+}
+
+export function createAssignment(
+  courseId: string,
+  payload: {
+    title: string;
+    instructionsHtml: string;
+    fundamentals?: string[];
+    objectives?: string[];
+    tutorialUrl?: string;
+    starterCode?: StarterAsset | null;
+  }
+) {
+  const db = load();
   const c = db.courses.find((x) => x.id === courseId);
   if (!c) throw new Error("Course not found.");
 
@@ -231,9 +303,16 @@ export function createAssignment(courseId: string, payload: Omit<Assignment, "id
     id: uid("asmt"),
     courseId,
     title: payload.title.trim(),
-    instructions: payload.instructions.trim(),
+
+    instructionsHtml: payload.instructionsHtml?.trim() || "<p></p>",
+    // optional legacy fallback
+    instructions: "",
+
     fundamentals: payload.fundamentals || [],
     objectives: payload.objectives || [],
+
+    tutorialUrl: payload.tutorialUrl?.trim() || undefined,
+    starterCode: payload.starterCode ?? null,
   };
 
   db.assignments.push(a);
@@ -241,7 +320,7 @@ export function createAssignment(courseId: string, payload: Omit<Assignment, "id
   return a;
 }
 
-/* OPTIONAL: record a submission (later: called by API) */
+/* record a submission */
 export function upsertSubmission(input: {
   assignmentId: string;
   studentEmail: string;
@@ -266,4 +345,36 @@ export function upsertSubmission(input: {
 
   save(db);
   return record;
+}
+
+/* submission + optional profile update (what your student UI will call) */
+export function upsertSubmissionWithProfile(input: {
+  assignmentId: string;
+  studentEmail: string;
+  traceCount: number;
+  summarySnippet: string;
+  topics?: string[];
+  mastered?: string[];
+  developing?: string[];
+  notes?: string;
+}) {
+  const a = getAssignment(input.assignmentId);
+
+  const sub = upsertSubmission({
+    assignmentId: input.assignmentId,
+    studentEmail: input.studentEmail,
+    traceCount: input.traceCount,
+    summarySnippet: input.summarySnippet,
+  });
+
+  if (input.topics || input.mastered || input.developing || input.notes) {
+    upsertCourseProfile(a.courseId, input.studentEmail, {
+      topics: input.topics || [],
+      mastered: input.mastered || [],
+      developing: input.developing || [],
+      notes: input.notes || "",
+    });
+  }
+
+  return sub;
 }

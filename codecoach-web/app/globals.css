@@ -64,3 +64,23 @@ body {
   border-color: rgba(78, 42, 132, 0.40);
   box-shadow: 0 0 0 4px rgba(78, 42, 132, 0.12);
 }
+
+.prose img {
+  max-width: 100%;
+  height: auto;
+}
+
+.prose pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.prose code {
+  word-break: break-word;
+}
+
+.prose pre {
+  padding: 16px;
+  border-radius: 12px;
+  overflow-x: auto;
+}
