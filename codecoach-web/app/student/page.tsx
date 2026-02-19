@@ -1,10 +1,11 @@
+// codecoach-web/app/student/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import AppShell from "@/components/AppShell";
 import { getAuth } from "@/lib/storage";
-import { seedIfNeeded, getStudentCourses, joinCourseByCode } from "@/lib/mockDb";
+import { getStudentCourses, joinCourseByCode, seedIfNeeded } from "@/lib/mockDb";
 import { useRouter } from "next/navigation";
 
 export default function StudentHome() {
@@ -12,17 +13,13 @@ export default function StudentHome() {
   const auth = getAuth();
   const email = auth?.email ?? "";
 
-  const [joinCode, setJoinCode] = useState("NU-CS-101");
+  const [joinCode, setJoinCode] = useState("");
+  const [courses, setCourses] = useState<any[]>([]);
   const [err, setErr] = useState<string | null>(null);
-  const [courses, setCourses] = useState(() => []);
 
   function refresh() {
-    try {
-      seedIfNeeded();
-      setCourses(getStudentCourses(email) as any);
-    } catch (e: any) {
-      setErr(e?.message ?? "Something went wrong.");
-    }
+    seedIfNeeded();
+    setCourses(getStudentCourses(email));
   }
 
   useEffect(() => {
@@ -30,52 +27,51 @@ export default function StudentHome() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const hint = useMemo(() => `Try join code: NU-CS-101`, []);
-
   return (
     <RequireAuth>
-      <AppShell title="My Courses">
+      <AppShell title="My Classes">
         <div className="space-y-8">
           <section className="space-y-3">
-            <div>
-              <div className="text-sm font-semibold">Join a course</div>
-              <div className="text-sm text-black/60">{hint}</div>
-            </div>
-
-            <div className="flex gap-3">
+            <div className="text-sm font-semibold">Join a class</div>
+            <div className="grid gap-3">
               <input
                 className="input"
                 value={joinCode}
                 onChange={(e) => setJoinCode(e.target.value)}
-                placeholder="Enter join code"
+                placeholder="Enter join code (e.g., NU-CS336-101)"
               />
+              {err ? <div className="text-sm text-red-700">{err}</div> : null}
               <button
-                className="btn-primary"
+                className="btn-primary w-fit"
                 onClick={() => {
                   setErr(null);
                   try {
+                    if (!joinCode.trim()) throw new Error("Join code required.");
                     joinCourseByCode(email, joinCode);
+                    setJoinCode("");
                     refresh();
                   } catch (e: any) {
-                    setErr(e?.message ?? "Failed to join.");
+                    setErr(e?.message ?? "Failed to join course.");
                   }
                 }}
               >
-                Join
+                Join course
               </button>
+              <div className="text-xs text-black/50">
+                Demo codes: <span className="font-semibold">NU-CS336-101</span>,{" "}
+                <span className="font-semibold">NU-CS213-202</span>,{" "}
+                <span className="font-semibold">NU-GEN-303</span>
+              </div>
             </div>
-
-            {err ? <div className="text-sm text-red-700">{err}</div> : null}
           </section>
 
           <section className="space-y-3">
-            <div className="text-sm font-semibold">Your courses</div>
-
+            <div className="text-sm font-semibold">Your enrolled classes</div>
             {courses.length === 0 ? (
-              <div className="text-sm text-black/60">No courses yet.</div>
+              <div className="text-sm text-black/60">You’re not enrolled in any classes yet.</div>
             ) : (
               <div className="grid gap-3">
-                {(courses as any[]).map((c) => (
+                {courses.map((c) => (
                   <button
                     key={c.id}
                     className="w-full text-left rounded-2xl border border-black/10 bg-white p-4 hover:bg-black/5 transition"

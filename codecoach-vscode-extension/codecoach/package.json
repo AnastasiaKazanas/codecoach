@@ -33,6 +33,16 @@
       { "command": "codecoach.clearChat", "title": "CodeCoach: Clear Chat (Session)" },
       { "command": "codecoach.exportLearningSummary", "title": "CodeCoach: Export Learning Summary" }
     ],
+    "configuration": {
+      "title": "CodeCoach",
+      "properties": {
+        "codecoach.demoMode": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use mock data (no backend APIs). Recommended for class demos."
+        }
+      }
+    },
     "viewsContainers": {
       "activitybar": [
         {

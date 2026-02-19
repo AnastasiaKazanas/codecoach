@@ -1,25 +1,22 @@
 import * as vscode from "vscode";
 import { CodeCoachViewProvider } from "./codecoachView";
+import { MOCK_ASSIGNMENTS, Assignment as MockAssignment } from "./mockData";
 
 const GEMINI_KEY_NAME = "codecoach.geminiKey";
 const AUTH_TOKEN_KEY = "codecoach.authToken";
 
-// Separate API URLs (matches “separate APIs” idea)
+// (kept for later / optional)
 const AUTH_API_URL_KEY = "codecoach.authApiUrl";
 const COURSES_API_URL_KEY = "codecoach.coursesApiUrl";
 const SESSIONS_API_URL_KEY = "codecoach.sessionsApiUrl";
 const ASSIGNMENTS_API_URL_KEY = "codecoach.assignmentsApiUrl";
 
-// -----------------------------
 // In-memory chat history (session-only)
-// -----------------------------
 type ChatMsg = { role: "user" | "model"; text: string };
 const chatHistory: ChatMsg[] = [];
 const MAX_TURNS = 12;
 
-// -----------------------------
 // Persistent learning profile (overall, across sessions)
-// -----------------------------
 const PROFILE_KEY = "codecoach.learningProfile.v1";
 
 type LearningProfile = {
@@ -29,6 +26,10 @@ type LearningProfile = {
   topics: string[];
   notes?: string;
 };
+
+function isDemoMode(): boolean {
+  return vscode.workspace.getConfiguration().get<boolean>("codecoach.demoMode", true);
+}
 
 function uniq(arr: string[]) {
   return Array.from(new Set(arr.map((s) => s.trim()).filter(Boolean)));
@@ -45,75 +46,15 @@ function mergeProfiles(oldP: LearningProfile, newP: LearningProfile): LearningPr
     mastered,
     developing,
     topics,
-    notes: newP.notes || oldP.notes,
+    notes: newP.notes || oldP.notes
   };
 }
 
-// -----------------------------
-// Assignment + session types
-// -----------------------------
-type Assignment = {
-  id: string;
-  courseId: string;
-  title: string;
-  instructions: string;
-  fundamentals: string[];
-  objectives: string[];
-};
-
-type TraceEvent = {
-  type: "chat_user" | "chat_model" | "checkpoint";
-  ts: string;
-  payload: any;
-};
-
-type ActiveSession = {
-  assignmentId: string;
-  sessionId: string;
-  assignment: Assignment;
-  traceBuffer: TraceEvent[]; // buffered events to send
-};
-
-let activeSession: ActiveSession | null = null;
-
-// -----------------------------
-// API helpers
-// -----------------------------
 function normalizeBaseUrl(url: string) {
   return url.trim().replace(/\/$/, "");
 }
 
-async function apiFetch<T>(
-  context: vscode.ExtensionContext,
-  baseKey: string,
-  path: string,
-  opts: RequestInit = {}
-): Promise<T> {
-  const baseUrl = context.globalState.get<string>(baseKey);
-  if (!baseUrl) throw new Error('API base URL not set. Run "CodeCoach: Set API Base URLs".');
-
-  const token = await context.secrets.get(AUTH_TOKEN_KEY);
-
-  const res = await fetch(`${baseUrl}${path}`, {
-    ...opts,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(opts.headers || {}),
-    },
-  });
-
-  const data: any = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const msg = data?.error || data?.message || `${res.status} ${res.statusText}`;
-    throw new Error(msg);
-  }
-  return data as T;
-}
-
-// -----------------------------
 // Gemini helper
-// -----------------------------
 async function callGeminiGenerateContent(apiKey: string, prompt: string) {
   const modelName = "models/gemini-flash-latest";
   const url =
@@ -125,8 +66,8 @@ async function callGeminiGenerateContent(apiKey: string, prompt: string) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.3 },
-    }),
+      generationConfig: { temperature: 0.3 }
+    })
   });
 
   const data: any = await res.json();
@@ -140,8 +81,25 @@ async function callGeminiGenerateContent(apiKey: string, prompt: string) {
   );
 }
 
+// Trace + active session (demo mode only uses local buffers)
+type TraceEvent = {
+  type: "chat_user" | "chat_model" | "checkpoint";
+  ts: string;
+  payload: any;
+};
+
+type ActiveSession = {
+  assignmentId: string;
+  sessionId: string; // local demo id
+  assignment: MockAssignment;
+  traceBuffer: TraceEvent[];
+  submitted: boolean;
+};
+
+let activeSession: ActiveSession | null = null;
+
 export function activate(context: vscode.ExtensionContext) {
-  console.log("✅ CodeCoach activate() ran");
+  console.log("CodeCoach activate() ran");
 
   let learningProfile: LearningProfile =
     context.globalState.get<LearningProfile>(PROFILE_KEY) || {
@@ -149,20 +107,20 @@ export function activate(context: vscode.ExtensionContext) {
       mastered: [],
       developing: [],
       topics: [],
-      notes: "",
+      notes: ""
     };
 
   let provider: CodeCoachViewProvider | null = null;
 
-  // -----------------------------
-  // Commands: Gemini key
-  // -----------------------------
+  // ----------------------------
+  // Command: Set Gemini API key
+  // ----------------------------
   context.subscriptions.push(
     vscode.commands.registerCommand("codecoach.setApiKey", async () => {
       const key = await vscode.window.showInputBox({
         prompt: "Paste your Gemini API key (from Google AI Studio)",
         password: true,
-        ignoreFocusOut: true,
+        ignoreFocusOut: true
       });
       if (!key) return;
       await context.secrets.store(GEMINI_KEY_NAME, key.trim());
@@ -170,11 +128,17 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  // -----------------------------
-  // Commands: API base URLs (4 APIs)
-  // -----------------------------
+  // ---------------------------------------
+  // Command: Set API base URLs (optional)
+  // ---------------------------------------
   context.subscriptions.push(
     vscode.commands.registerCommand("codecoach.setApiBaseUrls", async () => {
+      if (isDemoMode()) {
+        vscode.window.showInformationMessage("CodeCoach: Demo mode is ON — API URLs are not needed.");
+        provider?.postStatus("Demo mode: using mock data (no APIs).");
+        return;
+      }
+
       const currentAuth = context.globalState.get<string>(AUTH_API_URL_KEY) || "http://localhost:4001";
       const currentCourses = context.globalState.get<string>(COURSES_API_URL_KEY) || "http://localhost:4002";
       const currentSessions = context.globalState.get<string>(SESSIONS_API_URL_KEY) || "http://localhost:4003";
@@ -183,28 +147,28 @@ export function activate(context: vscode.ExtensionContext) {
       const authUrl = await vscode.window.showInputBox({
         prompt: "Auth API Base URL",
         value: currentAuth,
-        ignoreFocusOut: true,
+        ignoreFocusOut: true
       });
       if (!authUrl) return;
 
       const coursesUrl = await vscode.window.showInputBox({
         prompt: "Courses API Base URL",
         value: currentCourses,
-        ignoreFocusOut: true,
+        ignoreFocusOut: true
       });
       if (!coursesUrl) return;
 
       const sessionsUrl = await vscode.window.showInputBox({
         prompt: "Sessions API Base URL",
         value: currentSessions,
-        ignoreFocusOut: true,
+        ignoreFocusOut: true
       });
       if (!sessionsUrl) return;
 
       const assignmentsUrl = await vscode.window.showInputBox({
         prompt: "Assignments API Base URL",
         value: currentAssignments,
-        ignoreFocusOut: true,
+        ignoreFocusOut: true
       });
       if (!assignmentsUrl) return;
 
@@ -218,73 +182,83 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  // -----------------------------
-  // Commands: Connect account (paste token)
-  // -----------------------------
+  // ---------------------------------------
+  // Command: Connect account (paste token)
+  // (demo: optional / cosmetic)
+  // ---------------------------------------
   context.subscriptions.push(
     vscode.commands.registerCommand("codecoach.connectAccount", async () => {
       const token = await vscode.window.showInputBox({
-        prompt: "Paste your CodeCoach token (from the web app / auth API demo)",
+        prompt: "Paste your CodeCoach token (demo: any string works)",
         password: true,
-        ignoreFocusOut: true,
+        ignoreFocusOut: true
       });
       if (!token) return;
 
       await context.secrets.store(AUTH_TOKEN_KEY, token.trim());
       vscode.window.showInformationMessage("CodeCoach: connected.");
-      provider?.postStatus("Account connected ✅");
+      provider?.postStatus("Account connected");
     })
   );
 
-  // -----------------------------
-  // Commands: Clear chat
-  // -----------------------------
+  // ----------------------------
+  // Command: Clear chat (session)
+  // ----------------------------
   context.subscriptions.push(
     vscode.commands.registerCommand("codecoach.clearChat", async () => {
       chatHistory.length = 0;
       vscode.window.showInformationMessage("CodeCoach: chat cleared for this session.");
+      provider?.postStatus(activeSession ? `Active assignment: ${activeSession.assignment.title}` : "Chat cleared.");
     })
   );
 
-  // -----------------------------
-  // Commands: Open assignment (fetch from assignments-api + start session on sessions-api)
-  // -----------------------------
+  // ----------------------------
+  // Command: Open assignment
+  // Demo mode: QuickPick mock assignments
+  // ----------------------------
   context.subscriptions.push(
     vscode.commands.registerCommand("codecoach.openAssignment", async () => {
-      const assignmentId = await vscode.window.showInputBox({
-        prompt: "Enter Assignment ID",
-        ignoreFocusOut: true,
-      });
-      if (!assignmentId) return;
+      if (isDemoMode()) {
+        const pick = await vscode.window.showQuickPick(
+          MOCK_ASSIGNMENTS.map((a) => ({
+            label: a.title,
+            description: `${a.courseId} • ${a.id}`,
+            detail: `Fundamentals: ${a.fundamentals.join(", ")}`,
+            assignmentId: a.id
+          })),
+          { placeHolder: "Pick an assignment (demo mode)" }
+        );
 
-      // Assignment details come from api-assignments (4004)
-      const assignment = await apiFetch<Assignment>(context, ASSIGNMENTS_API_URL_KEY, `/assignments/${assignmentId}`, {
-        method: "GET",
-      });
+        if (!pick) return;
 
-      // Session is created by api-sessions (4003)
-      const started = await apiFetch<{ sessionId: string }>(context, SESSIONS_API_URL_KEY, `/sessions/start`, {
-        method: "POST",
-        body: JSON.stringify({ assignmentId }),
-      });
+        const assignment = MOCK_ASSIGNMENTS.find((x) => x.id === pick.assignmentId);
+        if (!assignment) return;
 
-      activeSession = {
-        assignmentId,
-        sessionId: started.sessionId,
-        assignment,
-        traceBuffer: [],
-      };
+        const sessionId = `demo-${Date.now()}`;
 
-      provider?.postStatus(`Active assignment: ${assignment.title}`);
-      vscode.window.showInformationMessage(`CodeCoach: opened "${assignment.title}".`);
+        activeSession = {
+          assignmentId: assignment.id,
+          sessionId,
+          assignment,
+          traceBuffer: [],
+          submitted: false
+        };
 
-      await vscode.commands.executeCommand("codecoach.openChat");
+        provider?.postStatus(`Active assignment: ${assignment.title}`);
+        vscode.window.showInformationMessage(`CodeCoach (demo): opened "${assignment.title}".`);
+        await vscode.commands.executeCommand("codecoach.openChat");
+        return;
+      }
+
+      // Real mode placeholder (optional)
+      vscode.window.showErrorMessage("Real mode is not set up. Turn on CodeCoach: Demo Mode in settings.");
     })
   );
 
-  // -----------------------------
-  // Commands: Export learning summary (session + overall)
-  // -----------------------------
+  // ----------------------------
+  // Command: Export learning summary
+  // (same behavior as before)
+  // ----------------------------
   context.subscriptions.push(
     vscode.commands.registerCommand("codecoach.exportLearningSummary", async () => {
       const apiKey = await context.secrets.get(GEMINI_KEY_NAME);
@@ -357,7 +331,7 @@ ${transcript}
         mastered: uniq(update.mastered || []),
         developing: uniq(update.developing || []),
         topics: uniq(update.topics || []),
-        notes: (update.notes || "").toString(),
+        notes: (update.notes || "").toString()
       };
 
       learningProfile = mergeProfiles(learningProfile, newProfile);
@@ -404,9 +378,10 @@ ${learningProfile.notes?.trim() ? learningProfile.notes : "(none)"}
     })
   );
 
-  // -----------------------------
-  // Commands: Submit learning process (trace + optional summary)
-  // -----------------------------
+  // ----------------------------
+  // Command: Submit learning process
+  // Demo mode: local submit (no upload)
+  // ----------------------------
   context.subscriptions.push(
     vscode.commands.registerCommand("codecoach.submitLearningProcess", async () => {
       if (!activeSession) {
@@ -414,32 +389,20 @@ ${learningProfile.notes?.trim() ? learningProfile.notes : "(none)"}
         return;
       }
 
-      // Flush buffered events
-      if (activeSession.traceBuffer.length > 0) {
-        await apiFetch(context, SESSIONS_API_URL_KEY, `/sessions/${activeSession.sessionId}/events`, {
-          method: "POST",
-          body: JSON.stringify({ events: activeSession.traceBuffer }),
-        });
-        activeSession.traceBuffer = [];
-      }
-
-      // Export summary locally
+      // In demo mode, submission is local:
+      // 1) export summary
+      // 2) mark submitted
       await vscode.commands.executeCommand("codecoach.exportLearningSummary");
+      activeSession.submitted = true;
 
-      // Mark submitted on server
-      await apiFetch(context, SESSIONS_API_URL_KEY, `/sessions/${activeSession.sessionId}/submit`, {
-        method: "POST",
-        body: JSON.stringify({}),
-      });
-
-      vscode.window.showInformationMessage("Submitted learning process ✅ (events uploaded + session submitted).");
-      provider?.postStatus(`Submitted: ${activeSession.assignment.title}`);
+      vscode.window.showInformationMessage(`Submitted (demo): ${activeSession.assignment.title}`);
+      provider?.postStatus(`Submitted (demo): ${activeSession.assignment.title}`);
     })
   );
 
-  // -----------------------------
-  // Chat handler
-  // -----------------------------
+  // ----------------------------
+  // Chat handler (same as before, but no apiFetch flushes)
+  // ----------------------------
   const onUserMessage = async (userText: string, contextText: string): Promise<string> => {
     const apiKey = await context.secrets.get(GEMINI_KEY_NAME);
     if (!apiKey) throw new Error('No Gemini API key set. Run "CodeCoach: Set Gemini API Key".');
@@ -447,16 +410,16 @@ ${learningProfile.notes?.trim() ? learningProfile.notes : "(none)"}
     // Save user's message in memory
     chatHistory.push({ role: "user", text: userText });
 
-    // Trace event (assignment session)
+    // Trace event
     if (activeSession) {
       activeSession.traceBuffer.push({
         type: "chat_user",
         ts: new Date().toISOString(),
-        payload: { text: userText },
+        payload: { text: userText }
       });
     }
 
-    // Trim chat memory for coaching loop
+    // Trim chat memory
     const maxMsgs = MAX_TURNS * 2;
     if (chatHistory.length > maxMsgs) chatHistory.splice(0, chatHistory.length - maxMsgs);
 
@@ -483,7 +446,7 @@ ${activeSession.assignment.instructions}
 `.trim()
       : "(no active assignment)";
 
-    const instructions = `You are CodeCoach, a custom GPT whose purpose is to implement and follow the following specifications: support learning first, instead of providing solutions outright, engage students in conversation about what they are trying to achieve, explain the fundamentals required for the task, be a teaching presence and encourage thinking.
+    const instructions = `You are CodeCoach, a custom GPT whose purpose is to support learning first, instead of providing solutions outright.
 
 Primary interaction pattern:
 - Coach by asking questions that help the user arrive at answers themselves.
@@ -525,25 +488,19 @@ ${userText}
       activeSession.traceBuffer.push({
         type: "chat_model",
         ts: new Date().toISOString(),
-        payload: { text: reply },
+        payload: { text: reply }
       });
-
-      // auto-flush every ~10 events
-      if (activeSession.traceBuffer.length >= 10) {
-        await apiFetch(context, SESSIONS_API_URL_KEY, `/sessions/${activeSession.sessionId}/events`, {
-          method: "POST",
-          body: JSON.stringify({ events: activeSession.traceBuffer }),
-        });
-        activeSession.traceBuffer = [];
-      }
     }
 
     return reply;
   };
 
+  // ----------------------------
+  // Webview provider + Open Chat
+  // ----------------------------
   provider = new CodeCoachViewProvider(context, onUserMessage);
   context.subscriptions.push(vscode.window.registerWebviewViewProvider("codecoach.chatView", provider));
-  console.log("✅ registered provider for codecoach.chatView");
+  console.log("registered provider for codecoach.chatView");
 
   context.subscriptions.push(
     vscode.commands.registerCommand("codecoach.openChat", async () => {
@@ -552,7 +509,8 @@ ${userText}
     })
   );
 
-  provider.postStatus("Tip: Set API URLs → Connect → Open assignment.");
+  // Initial status
+  provider.postStatus(isDemoMode() ? "Demo mode: Pick an assignment → Chat → Export." : "Tip: Set API URLs → Connect → Open assignment.");
 }
 
 export function deactivate() {}

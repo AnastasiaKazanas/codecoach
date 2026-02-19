@@ -1,3 +1,4 @@
+// codecoach-web/lib/mockDb.ts
 export type Role = "student" | "instructor";
 
 export type Course = {
@@ -26,7 +27,6 @@ export type Submission = {
   assignmentId: string;
   studentEmail: string;
   submittedAtISO: string;
-  // MVP placeholders for “learning trace + summary”
   traceCount: number;
   summarySnippet: string;
 };
@@ -41,16 +41,18 @@ type DB = {
 
 const KEY = "codecoach.mockdb.v1";
 
+function empty(): DB {
+  return { courses: [], assignments: [], enrollments: [], submissions: [], seeded: false };
+}
+
 function load(): DB {
-  if (typeof window === "undefined") {
-    return { courses: [], assignments: [], enrollments: [], submissions: [], seeded: false };
-  }
+  if (typeof window === "undefined") return empty();
   const raw = localStorage.getItem(KEY);
-  if (!raw) return { courses: [], assignments: [], enrollments: [], submissions: [], seeded: false };
+  if (!raw) return empty();
   try {
     return JSON.parse(raw) as DB;
   } catch {
-    return { courses: [], assignments: [], enrollments: [], submissions: [], seeded: false };
+    return empty();
   }
 }
 
@@ -62,33 +64,87 @@ function uid(prefix: string) {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function mkJoinCode(prefix: string) {
+  return `NU-${prefix}-${Math.floor(100 + Math.random() * 900)}`;
+}
+
 export function seedIfNeeded() {
   const db = load();
   if (db.seeded) return;
 
-  const courseId = "course_cs101";
-  const assignmentId = "asmt_a1";
+  const ownerEmail = "prof@northwestern.edu";
 
-  const seedCourse: Course = {
-    id: courseId,
-    title: "CS 101 — Intro to Programming",
+  const c1: Course = {
+    id: "CS336",
+    title: "CS 336 — Design & Analysis of Algorithms",
     term: "Winter 2026",
-    joinCode: "NU-CS-101",
-    ownerEmail: "prof@northwestern.edu",
+    joinCode: "NU-CS336-101",
+    ownerEmail,
   };
 
-  const seedAssignment: Assignment = {
-    id: assignmentId,
-    courseId,
-    title: "A1 — Learning Trace Warmup",
-    instructions:
-      "Your submission is your learning process: use CodeCoach in VS Code, ask questions, capture your reasoning, and export a learning summary. You do NOT need a perfect final program.\n\nGoal: demonstrate how you think and learn.",
-    fundamentals: ["Variables & types", "Functions", "Conditionals", "Loops", "Debugging mindset"],
-    objectives: ["Practice asking good debugging questions", "Explain your approach in your own words", "Reflect on what you learned"],
+  const c2: Course = {
+    id: "CS213",
+    title: "CS 213 — Computer Systems",
+    term: "Winter 2026",
+    joinCode: "NU-CS213-202",
+    ownerEmail,
   };
 
-  db.courses = [seedCourse];
-  db.assignments = [seedAssignment];
+  const c3: Course = {
+    id: "GEN",
+    title: "Debugging Workshop",
+    term: "Winter 2026",
+    joinCode: "NU-GEN-303",
+    ownerEmail,
+  };
+
+  const a1: Assignment = {
+    id: "cs336-hw-greedy-1",
+    courseId: "CS336",
+    title: "CS 336 — Greedy Scheduling (Demo)",
+    fundamentals: ["Greedy choice", "Exchange argument", "Runtime: sorting + scan"],
+    objectives: ["Choose a greedy strategy", "Explain correctness (exchange argument)", "Analyze runtime"],
+    instructions: [
+      "You are given intervals (start, finish).",
+      "Pick a maximum-size subset of non-overlapping intervals.",
+      "Explain *why* your greedy choice is optimal using an exchange argument.",
+      "Do not paste full solution code. Use pseudocode or a toy example.",
+    ].join("\n"),
+  };
+
+  const a2: Assignment = {
+    id: "cs213-asm-stack-1",
+    courseId: "CS213",
+    title: "CS 213 — Stack Frames & Calling Convention (Demo)",
+    fundamentals: ["SysV AMD64 calling convention", "Stack frames", "rsp movement"],
+    objectives: [
+      "Explain what push/pop do to rsp",
+      "Identify arg registers vs return register",
+      "Reason about local stack allocation",
+    ],
+    instructions: [
+      "Given a short x86-64 snippet, explain the stack frame setup/teardown.",
+      "Identify where arguments are passed (registers/stack).",
+      "Explain what 'sub $0x20, %rsp' implies.",
+    ].join("\n"),
+  };
+
+  const a3: Assignment = {
+    id: "general-debugging-1",
+    courseId: "GEN",
+    title: "Debugging Mindset — Minimal Repro (Demo)",
+    fundamentals: ["Hypothesis-driven debugging", "Binary search debugging", "Logging"],
+    objectives: ["Create a minimal repro", "Isolate the variable that changes behavior"],
+    instructions: [
+      "Describe the bug in one sentence.",
+      "List 3 hypotheses.",
+      "Explain the fastest experiment to rule out each hypothesis.",
+      "Write a minimal reproduction step-by-step.",
+    ].join("\n"),
+  };
+
+  db.courses = [c1, c2, c3];
+  db.assignments = [a1, a2, a3];
   db.enrollments = []; // students join by code
   db.submissions = [];
   db.seeded = true;
@@ -110,8 +166,8 @@ export function joinCourseByCode(studentEmail: string, joinCode: string) {
 
 export function getStudentCourses(studentEmail: string) {
   const db = load();
-  const courseIds = new Set(db.enrollments.filter(e => e.studentEmail === studentEmail).map(e => e.courseId));
-  return db.courses.filter(c => courseIds.has(c.id));
+  const courseIds = new Set(db.enrollments.filter((e) => e.studentEmail === studentEmail).map((e) => e.courseId));
+  return db.courses.filter((c) => courseIds.has(c.id));
 }
 
 export function getCourse(courseId: string) {
@@ -123,12 +179,12 @@ export function getCourse(courseId: string) {
 
 export function getCourseAssignments(courseId: string) {
   const db = load();
-  return db.assignments.filter(a => a.courseId === courseId);
+  return db.assignments.filter((a) => a.courseId === courseId);
 }
 
 export function getAssignment(assignmentId: string) {
   const db = load();
-  const a = db.assignments.find(x => x.id === assignmentId);
+  const a = db.assignments.find((x) => x.id === assignmentId);
   if (!a) throw new Error("Assignment not found.");
   return a;
 }
@@ -140,7 +196,7 @@ export function createCourse(ownerEmail: string, title: string, term: string) {
     id: uid("course"),
     title: title.trim(),
     term: term.trim(),
-    joinCode: `NU-${Math.random().toString(36).slice(2, 6).toUpperCase()}-${Math.floor(100 + Math.random()*900)}`,
+    joinCode: mkJoinCode(title.trim().split(" ")[0]?.toUpperCase() || "COURSE"),
     ownerEmail,
   };
   db.courses.push(c);
@@ -150,16 +206,64 @@ export function createCourse(ownerEmail: string, title: string, term: string) {
 
 export function getInstructorCourses(ownerEmail: string) {
   const db = load();
-  return db.courses.filter(c => c.ownerEmail === ownerEmail);
+  return db.courses.filter((c) => c.ownerEmail === ownerEmail);
 }
 
 export function getRoster(courseId: string) {
   const db = load();
-  return db.enrollments.filter(e => e.courseId === courseId).map(e => e.studentEmail);
+  return db.enrollments.filter((e) => e.courseId === courseId).map((e) => e.studentEmail);
 }
 
 export function getSubmissionsForCourse(courseId: string) {
   const db = load();
-  const assignmentIds = new Set(db.assignments.filter(a => a.courseId === courseId).map(a => a.id));
-  return db.submissions.filter(s => assignmentIds.has(s.assignmentId));
+  const assignmentIds = new Set(db.assignments.filter((a) => a.courseId === courseId).map((a) => a.id));
+  return db.submissions.filter((s) => assignmentIds.has(s.assignmentId));
+}
+
+/* OPTIONAL: add instructor ability to create assignments */
+export function createAssignment(courseId: string, payload: Omit<Assignment, "id" | "courseId">) {
+  const db = load();
+  // validate course exists
+  const c = db.courses.find((x) => x.id === courseId);
+  if (!c) throw new Error("Course not found.");
+
+  const a: Assignment = {
+    id: uid("asmt"),
+    courseId,
+    title: payload.title.trim(),
+    instructions: payload.instructions.trim(),
+    fundamentals: payload.fundamentals || [],
+    objectives: payload.objectives || [],
+  };
+
+  db.assignments.push(a);
+  save(db);
+  return a;
+}
+
+/* OPTIONAL: record a submission (later: called by API) */
+export function upsertSubmission(input: {
+  assignmentId: string;
+  studentEmail: string;
+  traceCount: number;
+  summarySnippet: string;
+}) {
+  const db = load();
+  const idx = db.submissions.findIndex(
+    (s) => s.assignmentId === input.assignmentId && s.studentEmail === input.studentEmail
+  );
+
+  const record: Submission = {
+    assignmentId: input.assignmentId,
+    studentEmail: input.studentEmail,
+    submittedAtISO: new Date().toISOString(),
+    traceCount: input.traceCount,
+    summarySnippet: input.summarySnippet,
+  };
+
+  if (idx >= 0) db.submissions[idx] = record;
+  else db.submissions.push(record);
+
+  save(db);
+  return record;
 }
