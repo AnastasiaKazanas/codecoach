@@ -1,4 +1,5 @@
 {
+  "publisher": "anastasiakazanas",
   "name": "codecoach",
   "displayName": "CodeCoach",
   "description": "AI-powered programming explanations and hints inside VS Code",
@@ -10,6 +11,8 @@
   "main": "./dist/extension.js",
   "activationEvents": [
     "onStartupFinished",
+    "onCommand:codecoach.connect",
+    "onUri",
     "onView:codecoach.chatView",
     "onCommand:codecoach.openChat",
     "onCommand:codecoach.setApiKey",
@@ -23,6 +26,7 @@
   "contributes": {
     "commands": [
       { "command": "codecoach.openChat", "title": "CodeCoach: Open Chat" },
+      { "command": "codecoach.connect", "title": "CodeCoach: Connect (from Web Link)" },
       { "command": "codecoach.setApiKey", "title": "CodeCoach: Set Gemini API Key" },
 
       { "command": "codecoach.setApiBaseUrls", "title": "CodeCoach: Set API Base URLs" },
@@ -38,8 +42,18 @@
       "properties": {
         "codecoach.demoMode": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Use mock data (no backend APIs). Recommended for class demos."
+        },
+        "codecoach.webBaseUrl": {
+          "type": "string",
+          "default": "http://localhost:3000",
+          "description": "Base URL of the CodeCoach web app (used to fetch assignments)."
+        },
+        "codecoach.authToken": {
+          "type": "string",
+          "default": "",
+          "description": "Optional bearer token if your web API is protected."
         }
       }
     },

@@ -3,6 +3,16 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { ensureAppUser } from "@/lib/db";
+
+type Role = "student" | "instructor";
+
+// simple “system” rule if the user row doesn’t exist yet
+function defaultRoleForEmail(email: string): Role {
+  const e = email.toLowerCase();
+  if (e.startsWith("instructor@")) return "instructor";
+  return "student";
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -20,12 +30,27 @@ export default function LoginPage() {
         email: email.trim(),
         password,
       });
-
       if (error) throw error;
 
-      // optional: route based on role stored in your public.users table
-      // simplest MVP: just send to dashboard and let dashboard redirect
-      router.replace("/dashboard");
+      const signedInEmail = data.user?.email?.trim();
+      if (!signedInEmail) throw new Error("Signed in, but missing email.");
+
+      // 1) Try to read role from public.users
+      const { data: existing, error: selErr } = await supabase
+        .from("users")
+        .select("role")
+        .eq("email", signedInEmail)
+        .maybeSingle();
+
+      // 2) If no row yet, create it once (auto role OR whatever you want)
+      const role: Role =
+        (existing?.role as Role | undefined) ?? defaultRoleForEmail(signedInEmail);
+
+      // ensure row exists + updated
+      await ensureAppUser(signedInEmail, role);
+
+      // 3) Route based on role
+      router.replace(role === "instructor" ? "/instructor" : "/student");
     } catch (e: any) {
       setErr(e?.message ?? "Login failed.");
     } finally {
@@ -40,7 +65,11 @@ export default function LoginPage() {
 
         <div className="grid gap-2">
           <div className="text-sm font-semibold">Email</div>
-          <input className="input" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <input
+            className="input"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
         </div>
 
         <div className="grid gap-2">

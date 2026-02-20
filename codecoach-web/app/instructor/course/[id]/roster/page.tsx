@@ -4,7 +4,7 @@ import RequireAuth from "@/components/RequireAuth";
 import AppShell from "@/components/AppShell";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { getCourse, getRoster } from "@/lib/mockDb";
+import { getCourse, getRoster } from "@/lib/db";
 
 export default function InstructorRosterPage() {
   const params = useParams();

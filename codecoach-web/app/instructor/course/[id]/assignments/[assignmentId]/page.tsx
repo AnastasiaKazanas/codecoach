@@ -8,7 +8,7 @@ import {
   getCourse,
   getAssignment,
   getSubmissionsForAssignment,
-} from "@/lib/mockDb";
+} from "@/lib/db";
 
 export default function InstructorAssignmentDetailPage() {
   const params = useParams();
@@ -78,20 +78,20 @@ export default function InstructorAssignmentDetailPage() {
               <div className="text-sm font-semibold mb-2">Description</div>
 
               <div className="rounded-2xl border border-black/10 bg-white p-4 sm:p-6 overflow-x-auto">
-                <div
-                  className="prose max-w-none"
-                  dangerouslySetInnerHTML={{
-                    __html: asmt.instructionsHtml || asmt.instructions || "",
-                  }}
-                />
+              <div
+                className="prose max-w-none"
+                dangerouslySetInnerHTML={{
+                  __html: asmt.instructions_html || asmt.instructions || "",
+                }}
+              />
               </div>
 
-              {asmt.tutorialUrl ? (
+              {asmt.tutorial_url ? (
                 <div className="mt-4 text-sm">
                   Tutorial:{" "}
                   <a
                     className="underline"
-                    href={asmt.tutorialUrl}
+                    href={asmt.tutorial_url}
                     target="_blank"
                     rel="noreferrer"
                   >
@@ -100,11 +100,11 @@ export default function InstructorAssignmentDetailPage() {
                 </div>
               ) : null}
 
-              {asmt.starterBundle?.files?.length ? (
+              {asmt.starter_bundle?.files?.length ? (
                 <div className="mt-2 text-sm">
                   <div className="font-semibold mb-1">Starter files</div>
                   <ul className="list-disc ml-5">
-                    {asmt.starterBundle.files.map((f: any) => (
+                    {asmt.starter_bundle.files.map((f: any) => (
                       <li key={f.path}>
                         <a
                           className="underline"

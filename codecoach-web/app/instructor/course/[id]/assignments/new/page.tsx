@@ -5,8 +5,8 @@ import AppShell from "@/components/AppShell";
 import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createAssignment, getCourse } from "@/lib/mockDb";
-import type { StarterFileAsset } from "@/lib/mockDb";
+import { createAssignment, getCourse } from "@/lib/db";
+import type { StarterFileAsset } from "@/lib/db";
 
 type StarterBundle = { files: StarterFileAsset[] };
 
@@ -313,12 +313,12 @@ export default function InstructorCreateAssignmentPage() {
                       if (!isValidHttpUrl(tutorialUrl)) throw new Error("Tutorial link must be a valid URL.");
 
                       await createAssignment({
-                        course_id: courseId,
+                        course_id: courseId, 
                         title,
                         instructionsHtml,
                         fundamentals: splitCsv(fundamentals),
                         objectives: splitCsv(objectives),
-                        tutorialUrl: tutorialUrl.trim() ? tutorialUrl.trim() : null,
+                        tutorialUrl: tutorialUrl.trim() ? tutorialUrl.trim() : undefined,
                         starterBundle: starterBundle ?? null,
                       });
 

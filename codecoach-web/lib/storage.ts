@@ -13,7 +13,17 @@ export function isNorthwesternEmail(email: string) {
   return email.endsWith("@u.northwestern.edu");
 }
 
-export async function setAuth() {
-  // no longer needed (Supabase handles auth)
-  return;
+export async function getMyRole(): Promise<"student" | "instructor" | null> {
+  const { data } = await supabase.auth.getUser();
+  const email = data.user?.email;
+  if (!email) return null;
+
+  const { data: row, error } = await supabase
+    .from("users")
+    .select("role")
+    .eq("email", email)
+    .maybeSingle();
+
+  if (error) throw error;
+  return (row?.role as "student" | "instructor" | undefined) ?? null;
 }

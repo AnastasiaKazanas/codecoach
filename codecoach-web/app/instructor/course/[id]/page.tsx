@@ -4,7 +4,7 @@ import RequireAuth from "@/components/RequireAuth";
 import AppShell from "@/components/AppShell";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { getCourse, seedIfNeeded } from "@/lib/mockDb";
+import { getCourse, seedIfNeeded } from "@/lib/db";
 
 export default function InstructorCourseHubPage() {
   const params = useParams();

@@ -7,14 +7,28 @@ import { getCurrentUser, getLearningProfile } from "@/lib/db";
 
 export default function StudentOverallProfilePage() {
   const [profile, setProfile] = useState<any>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
-      const user = await getCurrentUser();
-      if (!user?.email) return;
+      try {
+        setErr(null);
+        setLoading(true);
 
-      const data = await getLearningProfile(user.email);
-      setProfile(data?.data ?? null);
+        const user = await getCurrentUser();
+        if (!user?.email) {
+          setErr("Not signed in.");
+          return;
+        }
+
+        const p = await getLearningProfile(user.email);
+        setProfile(p); // p can be null if no row yet
+      } catch (e: any) {
+        setErr(e?.message ?? "Failed to load profile.");
+      } finally {
+        setLoading(false);
+      }
     }
 
     load();
@@ -23,17 +37,23 @@ export default function StudentOverallProfilePage() {
   return (
     <RequireAuth>
       <AppShell title="My Profile">
-        <div className="card p-6">
-          <div className="text-xl font-bold mb-4">Overall Learning Profile</div>
+        {loading ? <div className="text-sm text-black/60">Loading…</div> : null}
+        {err ? <div className="text-sm text-red-700">{err}</div> : null}
 
-          {profile ? (
-            <pre className="text-sm bg-gray-100 p-4 rounded-xl overflow-x-auto">
-              {JSON.stringify(profile, null, 2)}
-            </pre>
+        {!loading && !err ? (
+          profile ? (
+            <div className="card p-6">
+              <div className="text-sm font-semibold">Profile loaded ✅</div>
+              {/* render your mastered/developing/topics safely here */}
+            </div>
           ) : (
-            <div>No profile yet.</div>
-          )}
-        </div>
+            <div className="card p-6">
+              <div className="text-sm text-black/70">
+                No profile yet (this is normal until you generate one).
+              </div>
+            </div>
+          )
+        ) : null}
       </AppShell>
     </RequireAuth>
   );

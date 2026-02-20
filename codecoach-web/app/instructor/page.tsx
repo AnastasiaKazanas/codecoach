@@ -4,7 +4,7 @@ import RequireAuth from "@/components/RequireAuth";
 import AppShell from "@/components/AppShell";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ensureAppUser, createCourse, getInstructorCourses } from "@/lib/mockDb";
+import { ensureAppUser, createCourse, getInstructorCourses } from "@/lib/db";
 
 export default function InstructorHome() {
   const router = useRouter();
@@ -13,6 +13,7 @@ export default function InstructorHome() {
   const [email, setEmail] = useState("");
   const [courses, setCourses] = useState<any[]>([]);
   const [err, setErr] = useState<string | null>(null);
+  const isInstructor = email.includes("instructor@");
 
   const [title, setTitle] = useState("CS 110: Intro to Computer Programming with Python");
   const [term, setTerm] = useState("Spring 2026");
@@ -45,32 +46,34 @@ export default function InstructorHome() {
       <AppShell title="My Courses">
         <div className="space-y-8">
           {err ? <div className="text-sm text-red-700">{err}</div> : null}
+          
+          {isInstructor && (
+            <section className="space-y-3">
+              <div className="text-sm font-semibold">Create a course</div>
+              <div className="grid gap-3">
+                <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Course title" />
+                <input className="input" value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Term" />
 
-          <section className="space-y-3">
-            <div className="text-sm font-semibold">Create a course</div>
-            <div className="grid gap-3">
-              <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Course title" />
-              <input className="input" value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Term" />
+                <button
+                  className="btn-primary w-fit"
+                  onClick={async () => {
+                    try {
+                      setErr(null);
+                      if (!instructorId) throw new Error("Not signed in.");
+                      if (!title.trim() || !term.trim()) throw new Error("Title and term required.");
 
-              <button
-                className="btn-primary w-fit"
-                onClick={async () => {
-                  try {
-                    setErr(null);
-                    if (!instructorId) throw new Error("Not signed in.");
-                    if (!title.trim() || !term.trim()) throw new Error("Title and term required.");
-
-                    await createCourse({ title: title.trim(), term: term.trim(), instructor_id: instructorId });
-                    await refresh(instructorId);
-                  } catch (e: any) {
-                    setErr(e?.message ?? "Failed to create course.");
-                  }
-                }}
-              >
-                Create course
-              </button>
-            </div>
-          </section>
+                      await createCourse({ title: title.trim(), term: term.trim(), instructor_id: instructorId });
+                      await refresh(instructorId);
+                    } catch (e: any) {
+                      setErr(e?.message ?? "Failed to create course.");
+                    }
+                  }}
+                >
+                  Create course
+                </button>
+              </div>
+            </section>
+            )}
 
           <section className="space-y-3">
             <div className="text-sm font-semibold">Courses you own</div>

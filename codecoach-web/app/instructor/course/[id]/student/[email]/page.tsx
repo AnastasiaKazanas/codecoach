@@ -9,7 +9,7 @@ import {
   getCourseProfile,
   getCourseAssignments,
   getSubmissionsForStudentInCourse,
-} from "@/lib/mockDb";
+} from "@/lib/db";
 
 export default function InstructorStudentInCoursePage() {
   const router = useRouter();
