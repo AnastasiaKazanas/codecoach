@@ -5,6 +5,11 @@ for website:
 - log in as student demo: student@u.northwestern.edu
 - log in as instructor demo: instructor@u.northwestern.edu
 
+OR
+
+https://codecoach-6pnemrcye-anastasiakazanas-projects.vercel.app/
+
+
 for codecoach IDE:
 - open codecoach/codecoach-vscode-extension/codecoach
 - npm run compile
@@ -16,3 +21,7 @@ for codecoach IDE:
 - press connect to connect to account (student@u.northwestern.edu)
     - get student CodeCoach token from settings in web app
 - then can open up assignment
+
+OR
+
+open through assignment on website
