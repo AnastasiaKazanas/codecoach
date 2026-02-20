@@ -14,8 +14,8 @@ export default function InstructorHome() {
   const [courses, setCourses] = useState<any[]>([]);
   const [err, setErr] = useState<string | null>(null);
 
-  const [title, setTitle] = useState("CS 348 — AI");
-  const [term, setTerm] = useState("Spring 2026");
+  const [title, setTitle] = useState("name of course");
+  const [term, setTerm] = useState("term");
 
   const refresh = useCallback(
     async (em?: string) => {
