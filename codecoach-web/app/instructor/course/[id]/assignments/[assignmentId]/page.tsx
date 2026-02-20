@@ -85,16 +85,18 @@ export default function InstructorAssignmentDetailPage() {
                 </div>
               ) : null}
 
-              {asmt.starterCode?.dataUrl ? (
+              {asmt.starterBundle?.files?.length ? (
                 <div className="mt-2 text-sm">
-                  Starter code:{" "}
-                  <a
-                    className="underline"
-                    href={asmt.starterCode.dataUrl}
-                    download={asmt.starterCode.filename}
-                  >
-                    Download {asmt.starterCode.filename}
-                  </a>
+                  <div className="font-semibold mb-1">Starter files</div>
+                  <ul className="list-disc ml-5">
+                    {asmt.starterBundle.files.map((f: any) => (
+                      <li key={f.path}>
+                        <a className="underline" href={f.dataUrl} download={f.filename}>
+                          {f.path}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               ) : null}
             </div>

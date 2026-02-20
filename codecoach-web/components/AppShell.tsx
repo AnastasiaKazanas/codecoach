@@ -64,6 +64,7 @@ export default function AppShell({
         <aside className="col-span-12 md:col-span-3 space-y-3">
           <NavItem href="/dashboard" label="Dashboard" />
           {isStudent ? <NavItem href="/student" label="My Courses" /> : null}
+          {isStudent ? <NavItem href="/student/profile" label="My Profile" /> : null}
           {isInstructor ? <NavItem href="/instructor" label="My Courses" /> : null}
           <NavItem href="/settings" label="Settings" />
         </aside>

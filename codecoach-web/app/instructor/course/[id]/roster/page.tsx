@@ -49,9 +49,7 @@ export default function InstructorRosterPage() {
                     key={email}
                     className="w-full text-left rounded-2xl border border-black/10 bg-white p-4 hover:bg-black/5 transition"
                     onClick={() =>
-                      router.push(
-                        `/instructor/course/${courseId}/student/${encodeURIComponent(email)}`
-                      )
+                      router.push(`/instructor/course/${courseId}/student/${encodeURIComponent(email)}`)
                     }
                   >
                     <div className="text-sm font-semibold">{email}</div>

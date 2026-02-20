@@ -4,10 +4,15 @@ import RequireAuth from "@/components/RequireAuth";
 import AppShell from "@/components/AppShell";
 import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import { createAssignment, getCourse, seedIfNeeded } from "@/lib/mockDb";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  createAssignment,
+  getCourse,
+  seedIfNeeded,
+  StarterBundle,
+  StarterFileAsset,
+} from "@/lib/mockDb";
 
-// ✅ Load editor client-side only to avoid SSR/hydration errors
 const RichTextEditor = dynamic(() => import("@/components/RichTextEditor"), {
   ssr: false,
   loading: () => (
@@ -24,17 +29,7 @@ function splitCsv(s: string) {
     .filter(Boolean);
 }
 
-async function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(String(r.result || ""));
-    r.onerror = () => reject(new Error("Failed to read file"));
-    r.readAsDataURL(file);
-  });
-}
-
 function htmlLooksEmpty(html: string) {
-  // Treat "<p></p>", "<p><br></p>", whitespace, etc as empty
   const stripped = (html || "")
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
@@ -47,13 +42,42 @@ function htmlLooksEmpty(html: string) {
 }
 
 function isValidHttpUrl(url: string) {
-  if (!url.trim()) return true; // optional
+  if (!url.trim()) return true;
   try {
     const u = new URL(url.trim());
     return u.protocol === "http:" || u.protocol === "https:";
   } catch {
     return false;
   }
+}
+
+async function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result || ""));
+    r.onerror = () => reject(new Error("Failed to read file"));
+    r.readAsDataURL(file);
+  });
+}
+
+async function buildStarterBundleFromFiles(files: FileList): Promise<StarterBundle> {
+  const arr = Array.from(files);
+
+  const assets: StarterFileAsset[] = await Promise.all(
+    arr.map(async (f) => {
+      const dataUrl = await fileToDataUrl(f);
+      const path = (f as any).webkitRelativePath || f.name; // folder picker preserves this
+      return {
+        path,
+        filename: f.name,
+        mime: f.type || "application/octet-stream",
+        dataUrl,
+      };
+    })
+  );
+
+  assets.sort((a, b) => a.path.localeCompare(b.path));
+  return { files: assets };
 }
 
 export default function InstructorCreateAssignmentPage() {
@@ -68,9 +92,13 @@ export default function InstructorCreateAssignmentPage() {
   const [instructionsHtml, setInstructionsHtml] = useState("<p></p>");
   const [fundamentals, setFundamentals] = useState("");
   const [objectives, setObjectives] = useState("");
-
   const [tutorialUrl, setTutorialUrl] = useState("");
-  const [starterFile, setStarterFile] = useState<File | null>(null);
+
+  const [starterBundle, setStarterBundle] = useState<StarterBundle | null>(null);
+  const [starterLabel, setStarterLabel] = useState<string>("");
+
+  // ✅ Folder input ref so we can set the non-standard attribute safely
+  const folderInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     try {
@@ -82,18 +110,20 @@ export default function InstructorCreateAssignmentPage() {
     }
   }, [courseId]);
 
-const canCreate = useMemo(() => {
-  if (!title.trim()) return false;
-  // require at least 3 non-whitespace characters in the editor
-  const plain = (instructionsHtml || "")
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .trim();
+  useEffect(() => {
+    // ✅ This removes the TS error and still enables folder picking in Chrome/Edge
+    if (folderInputRef.current) {
+      folderInputRef.current.setAttribute("webkitdirectory", "");
+      folderInputRef.current.setAttribute("directory", "");
+    }
+  }, []);
 
-  if (plain.length < 3) return false;
-  if (!isValidHttpUrl(tutorialUrl)) return false;
-  return true;
-}, [title, instructionsHtml, tutorialUrl]);
+  const canCreate = useMemo(() => {
+    if (!title.trim()) return false;
+    if (htmlLooksEmpty(instructionsHtml)) return false;
+    if (!isValidHttpUrl(tutorialUrl)) return false;
+    return true;
+  }, [title, instructionsHtml, tutorialUrl]);
 
   return (
     <RequireAuth>
@@ -114,24 +144,22 @@ const canCreate = useMemo(() => {
                   className="input"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="HW1 — Installation & Intro Exercises"
+                  placeholder="HW2 — Intro to Tkinter"
                 />
               </div>
 
               <div className="grid gap-2">
                 <div className="text-sm font-semibold">Assignment description</div>
                 <div className="text-xs text-black/60">
-                  Format text, add links, and insert images (demo stores images in localStorage).
+                  Format text, add links, and insert images (demo stores content in localStorage).
                 </div>
 
-                {/* ✅ Rich text editor (HTML) */}
                 <RichTextEditor
                   valueHtml={instructionsHtml}
                   onChangeHtml={setInstructionsHtml}
                   placeholder="Write assignment instructions…"
                 />
 
-                {/* Optional image upload that embeds into HTML */}
                 <div className="flex flex-wrap items-center gap-3">
                   <label className="px-3 py-2 rounded-xl border border-black/10 cursor-pointer bg-white hover:bg-black/5 transition">
                     Upload image
@@ -140,20 +168,13 @@ const canCreate = useMemo(() => {
                       accept="image/*"
                       className="hidden"
                       onChange={async (e) => {
-                        const input = e.target; // ✅ avoid currentTarget null issues
+                        const input = e.target as HTMLInputElement;
                         const f = input.files?.[0];
-                        if (!f) {
-                          input.value = "";
-                          return;
-                        }
+                        if (!f) return;
 
                         const dataUrl = await fileToDataUrl(f);
                         const safeAlt = (f.name || "image").replace(/"/g, "&quot;");
-
-                        // Append an image at the end
                         setInstructionsHtml((prev) => `${prev}<p><img src="${dataUrl}" alt="${safeAlt}" /></p>`);
-
-                        // ✅ reset so same file can be re-selected
                         input.value = "";
                       }}
                     />
@@ -179,23 +200,91 @@ const canCreate = useMemo(() => {
               </div>
 
               <div className="grid gap-2">
-                <div className="text-sm font-semibold">Starter code (optional)</div>
-                <input
-                  className="input"
-                  type="file"
-                  accept=".zip,.py,.txt,.md"
-                  onChange={(e) => {
-                    const input = e.target;
-                    const f = input.files?.[0] ?? null;
-                    setStarterFile(f);
-                    // don’t clear here; clear after create or if you want “re-select same file”
-                  }}
-                />
-                {starterFile ? (
-                  <div className="text-xs text-black/60">Selected: {starterFile.name}</div>
-                ) : (
-                  <div className="text-xs text-black/50">Upload a zip (recommended) or a single file.</div>
-                )}
+                <div className="text-sm font-semibold">Starter files (optional)</div>
+
+                <div className="flex flex-wrap gap-3 items-center">
+                  {/* Zip picker */}
+                  <label className="px-3 py-2 rounded-xl border border-black/10 cursor-pointer bg-white hover:bg-black/5 transition">
+                    Upload zip
+                    <input
+                      type="file"
+                      accept=".zip,application/zip"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const input = e.target as HTMLInputElement;
+                        const f = input.files?.[0];
+                        if (!f) return;
+
+                        const dataUrl = await fileToDataUrl(f);
+                        setStarterBundle({
+                          files: [
+                            {
+                              path: f.name,
+                              filename: f.name,
+                              mime: f.type || "application/zip",
+                              dataUrl,
+                            },
+                          ],
+                        });
+                        setStarterLabel(`Zip: ${f.name}`);
+                        input.value = "";
+                      }}
+                    />
+                  </label>
+
+                  {/* Multi-file picker */}
+                  <label className="px-3 py-2 rounded-xl border border-black/10 cursor-pointer bg-white hover:bg-black/5 transition">
+                    Upload files
+                    <input
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={async (e) => {
+                        const input = e.target as HTMLInputElement;
+                        if (!input.files?.length) return;
+
+                        const bundle = await buildStarterBundleFromFiles(input.files);
+                        setStarterBundle(bundle);
+                        setStarterLabel(`${bundle.files.length} file(s)`);
+                        input.value = "";
+                      }}
+                    />
+                  </label>
+
+                  {/* Folder picker (Chromium) */}
+                  <label className="px-3 py-2 rounded-xl border border-black/10 cursor-pointer bg-white hover:bg-black/5 transition">
+                    Upload folder
+                    <input
+                      ref={folderInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={async (e) => {
+                        const input = e.target as HTMLInputElement;
+                        if (!input.files?.length) return;
+
+                        const bundle = await buildStarterBundleFromFiles(input.files);
+                        setStarterBundle(bundle);
+                        setStarterLabel(`Folder: ${bundle.files.length} file(s)`);
+                        input.value = "";
+                      }}
+                    />
+                  </label>
+
+                  {starterBundle ? (
+                    <button
+                      className="px-3 py-2 rounded-xl border border-black/10 bg-white hover:bg-black/5 transition text-sm"
+                      onClick={() => {
+                        setStarterBundle(null);
+                        setStarterLabel("");
+                      }}
+                    >
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
+
+                {starterLabel ? <div className="text-xs text-black/60">Selected: {starterLabel}</div> : null}
               </div>
 
               <div className="grid gap-2">
@@ -204,7 +293,7 @@ const canCreate = useMemo(() => {
                   className="input"
                   value={fundamentals}
                   onChange={(e) => setFundamentals(e.target.value)}
-                  placeholder="variables, input/output, conditionals"
+                  placeholder="modules, documentation, functions"
                 />
               </div>
 
@@ -214,46 +303,28 @@ const canCreate = useMemo(() => {
                   className="input"
                   value={objectives}
                   onChange={(e) => setObjectives(e.target.value)}
-                  placeholder="use input(), print formatted output, write if statements"
+                  placeholder="read module docs, write your own functions"
                 />
-              </div>
-              
-              <div className="text-xs text-black/60">
-                Debug: title={title.trim() ? "✅" : "❌"} • description= 
-                {htmlLooksEmpty(instructionsHtml) ? "❌ (empty)" : "✅"} • tutorial=
-                {!isValidHttpUrl(tutorialUrl) ? "❌ (bad url)" : "✅"}
               </div>
 
               <div className="flex gap-2">
                 <button
                   className="btn-primary"
                   disabled={!canCreate}
-                  onClick={async () => {
+                  onClick={() => {
                     try {
                       if (!title.trim()) throw new Error("Title required.");
                       if (htmlLooksEmpty(instructionsHtml)) throw new Error("Description required.");
                       if (!isValidHttpUrl(tutorialUrl)) throw new Error("Tutorial link must be a valid URL.");
 
-                      let starterCode: any = null;
-
-                      if (starterFile) {
-                        const dataUrl = await fileToDataUrl(starterFile);
-                        starterCode = {
-                          filename: starterFile.name,
-                          mime: starterFile.type || "application/octet-stream",
-                          dataUrl,
-                        };
-                      }
-
-                      // NOTE: this assumes your createAssignment supports these fields
                       createAssignment(courseId, {
                         title,
                         instructionsHtml,
                         fundamentals: splitCsv(fundamentals),
                         objectives: splitCsv(objectives),
                         tutorialUrl: tutorialUrl.trim() ? tutorialUrl.trim() : undefined,
-                        starterCode,
-                      } as any);
+                        starterBundle: starterBundle ?? null,
+                      });
 
                       router.push(`/instructor/course/${courseId}/assignments`);
                     } catch (e: any) {
