@@ -2,13 +2,7 @@
 
 import RequireAuth from "@/components/RequireAuth";
 import AppShell from "@/components/AppShell";
-import { getAuth } from "@/lib/storage";
-import {
-  getCourse,
-  getCourseProfile,
-  getSubmissionsForStudentInCourse,
-  seedIfNeeded,
-} from "@/lib/mockDb";
+import { getCurrentUser, getCourse } from "@/lib/db";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -17,29 +11,23 @@ export default function StudentCourseProfilePage() {
   const router = useRouter();
 
   const courseId = params.id as string;
-  const auth = getAuth();
-  const email = auth?.email ?? "";
 
   const [course, setCourse] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [subs, setSubs] = useState<any[]>([]);
   const [err, setErr] = useState<string | null>(null);
 
-  function refresh() {
-    try {
-      seedIfNeeded();
-      setCourse(getCourse(courseId));
-      setProfile(getCourseProfile(courseId, email));
-      setSubs(getSubmissionsForStudentInCourse(courseId, email));
-      setErr(null);
-    } catch (e: any) {
-      setErr(e?.message ?? "Failed to load profile.");
-    }
-  }
 
   useEffect(() => {
-    refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    async function load() {
+      const user = await getCurrentUser();
+      if (!user?.email) return;
+
+      const courseData = await getCourse(courseId);
+      setCourse(courseData);
+    }
+
+    load();
   }, [courseId]);
 
   return (

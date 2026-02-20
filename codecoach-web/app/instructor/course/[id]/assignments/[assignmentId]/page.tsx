@@ -5,10 +5,9 @@ import AppShell from "@/components/AppShell";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  getAssignment,
   getCourse,
+  getAssignment,
   getSubmissionsForAssignment,
-  seedIfNeeded,
 } from "@/lib/mockDb";
 
 export default function InstructorAssignmentDetailPage() {
@@ -25,15 +24,31 @@ export default function InstructorAssignmentDetailPage() {
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      seedIfNeeded();
-      setCourse(getCourse(courseId));
-      setAsmt(getAssignment(assignmentId));
-      setSubs(getSubmissionsForAssignment(assignmentId));
-      setErr(null);
-    } catch (e: any) {
-      setErr(e?.message ?? "Failed to load assignment.");
+    let cancelled = false;
+
+    async function load() {
+      try {
+        setErr(null);
+
+        const c = await getCourse(courseId);
+        const a = await getAssignment(assignmentId);
+        const s = await getSubmissionsForAssignment(assignmentId);
+
+        if (cancelled) return;
+
+        setCourse(c);
+        setAsmt(a);
+        setSubs(Array.isArray(s) ? s : []);
+      } catch (e: any) {
+        if (cancelled) return;
+        setErr(e?.message ?? "Failed to load assignment.");
+      }
     }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
   }, [courseId, assignmentId]);
 
   return (
@@ -91,7 +106,11 @@ export default function InstructorAssignmentDetailPage() {
                   <ul className="list-disc ml-5">
                     {asmt.starterBundle.files.map((f: any) => (
                       <li key={f.path}>
-                        <a className="underline" href={f.dataUrl} download={f.filename}>
+                        <a
+                          className="underline"
+                          href={f.dataUrl}
+                          download={f.filename}
+                        >
                           {f.path}
                         </a>
                       </li>
@@ -103,6 +122,7 @@ export default function InstructorAssignmentDetailPage() {
 
             <div className="card p-6">
               <div className="text-sm font-semibold">Submissions</div>
+
               {subs.length === 0 ? (
                 <div className="mt-2 text-sm text-black/60">
                   No submissions yet.
@@ -116,10 +136,12 @@ export default function InstructorAssignmentDetailPage() {
                     >
                       <div className="font-semibold">{s.studentEmail}</div>
                       <div className="text-xs text-black/60">
-                        {new Date(s.submittedAtISO).toLocaleString()}
+                        {s.submittedAtISO
+                          ? new Date(s.submittedAtISO).toLocaleString()
+                          : "(no submitted time)"}
                       </div>
                       <div className="mt-1 text-xs text-black/70">
-                        Trace: {s.traceCount} •{" "}
+                        Trace: {s.traceCount ?? 0} •{" "}
                         {s.summarySnippet || "(no snippet)"}
                       </div>
                     </div>

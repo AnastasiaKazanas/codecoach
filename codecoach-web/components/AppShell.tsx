@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { clearAuth, getAuth } from "@/lib/storage";
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 
 function NavItem({ href, label }: { href: string; label: string }) {
   const pathname = usePathname();
@@ -30,10 +31,31 @@ export default function AppShell({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const auth = getAuth();
+  const [user, setUser] = useState<any>(null);
+  const [role, setRole] = useState<string | null>(null);
 
-  const isStudent = auth?.role === "student";
-  const isInstructor = auth?.role === "instructor";
+  useEffect(() => {
+    async function load() {
+      const { data } = await supabase.auth.getUser();
+      const currentUser = data.user;
+      setUser(currentUser);
+
+      if (currentUser?.email) {
+        const { data: userRow } = await supabase
+          .from("users")
+          .select("role")
+          .eq("email", currentUser.email)
+          .single();
+
+        setRole(userRow?.role ?? null);
+      }
+    }
+
+    load();
+  }, []);
+
+  const isStudent = role === "student";
+  const isInstructor = role === "instructor";
 
   return (
     <div className="min-h-screen bg-[#F7F6FB]">
@@ -46,11 +68,13 @@ export default function AppShell({
 
           <div className="text-right">
             <div className="text-xs text-black/50">Signed in as</div>
-            <div className="text-sm font-semibold">{auth?.email ?? "—"}</div>
+            <div className="text-sm font-semibold">
+              {user?.email ?? "—"}
+            </div>
             <button
               className="mt-2 btn-secondary text-xs"
-              onClick={() => {
-                clearAuth();
+              onClick={async () => {
+                await supabase.auth.signOut();
                 router.replace("/");
               }}
             >
@@ -71,10 +95,14 @@ export default function AppShell({
 
         <main className="col-span-12 md:col-span-9 space-y-6">
           <div>
-            <h1 className="text-3xl font-extrabold tracking-tight">{title}</h1>
+            <h1 className="text-3xl font-extrabold tracking-tight">
+              {title}
+            </h1>
           </div>
 
-          <div className="card p-6 sm:p-8 overflow-hidden">{children}</div>
+          <div className="card p-6 sm:p-8 overflow-hidden">
+            {children}
+          </div>
         </main>
       </div>
     </div>

@@ -4,7 +4,7 @@ import RequireAuth from "@/components/RequireAuth";
 import AppShell from "@/components/AppShell";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { getAssignment, getCourse, seedIfNeeded } from "@/lib/mockDb";
+import { getAssignment, getCourse } from "@/lib/db";
 
 type StarterFile = {
   path: string;
@@ -128,14 +128,19 @@ export default function StudentAssignmentDetailPage() {
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      seedIfNeeded();
-      setCourse(getCourse(courseId));
-      setAsmt(getAssignment(assignmentId));
-      setErr(null);
-    } catch (e: any) {
-      setErr(e?.message ?? "Failed to load assignment.");
+    async function load() {
+      try {
+        const c = await getCourse(courseId);
+        const a = await getAssignment(assignmentId);
+        setCourse(c);
+        setAsmt(a);
+        setErr(null);
+      } catch (e: any) {
+        setErr(e.message ?? "Failed to load assignment.");
+      }
     }
+
+    load();
   }, [courseId, assignmentId]);
 
   const starterFiles: StarterFile[] = useMemo(() => {

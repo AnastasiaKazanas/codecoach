@@ -5,6 +5,7 @@ import RequireAuth from "@/components/RequireAuth";
 import { AssignmentsAPI, SessionsAPI } from "@/lib/api";
 import { useEffect, useState } from "react";
 
+
 export default function InstructorAssignmentPage({ params }: { params: { assignmentId: string } }) {
   const assignmentId = params.assignmentId;
   const [assignment, setAssignment] = useState<any | null>(null);
@@ -29,7 +30,7 @@ export default function InstructorAssignmentPage({ params }: { params: { assignm
 
   return (
     <RequireAuth>
-      <AppShell>
+      <AppShell title="Course Profile">
         <div className="card p-6">
           <div className="text-xl font-bold">Assignment</div>
           <div className="mt-1 text-sm text-black/60">Assignment ID: {assignmentId}</div>

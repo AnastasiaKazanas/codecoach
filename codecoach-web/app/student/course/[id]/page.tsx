@@ -4,7 +4,7 @@ import RequireAuth from "@/components/RequireAuth";
 import AppShell from "@/components/AppShell";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { getCourse, getCourseAssignments, seedIfNeeded } from "@/lib/mockDb";
+import { getCourse, getCourseAssignments } from "@/lib/mockDb";
 
 export default function StudentCoursePage() {
   const params = useParams();
@@ -16,14 +16,21 @@ export default function StudentCoursePage() {
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      seedIfNeeded();
-      setCourse(getCourse(courseId));
-      setAssignments(getCourseAssignments(courseId));
-      setErr(null);
-    } catch (e: any) {
-      setErr(e?.message ?? "Failed to load course.");
+    async function load() {
+      try {
+        setErr(null);
+
+        const c = await getCourse(courseId);
+        const a = await getCourseAssignments(courseId);
+
+        setCourse(c);
+        setAssignments(a);
+      } catch (e: any) {
+        setErr(e?.message ?? "Failed to load course.");
+      }
     }
+
+    load();
   }, [courseId]);
 
   return (
@@ -40,9 +47,9 @@ export default function StudentCoursePage() {
               <div className="mt-4">
                 <button
                   className="px-3 py-2 rounded-xl border border-black/10 hover:bg-black/5 transition"
-                  onClick={() => router.push(`/student/course/${courseId}/profile`)}
+                  onClick={() => router.push("/student")}
                 >
-                  View course profile
+                  Back to courses
                 </button>
               </div>
             </div>
@@ -65,10 +72,11 @@ export default function StudentCoursePage() {
                       }
                     >
                       <div className="text-base font-bold">{a.title}</div>
-                      <div className="text-xs text-black/60 mt-1">
-                        {a.tutorialUrl ? "Has tutorial link" : "No tutorial"} •{" "}
-                        {a.starterCode ? "Has starter code" : "No starter code"}
-                      </div>
+                      {a.createdAtISO ? (
+                        <div className="text-xs text-black/60 mt-1">
+                          Created: {new Date(a.createdAtISO).toLocaleString()}
+                        </div>
+                      ) : null}
                     </button>
                   ))}
                 </div>

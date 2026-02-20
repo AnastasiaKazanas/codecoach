@@ -2,8 +2,9 @@
 
 import AppShell from "@/components/AppShell";
 import RequireAuth from "@/components/RequireAuth";
-import { getAuth } from "@/lib/storage";
+import { supabase } from "@/lib/supabase";
 import { useEffect, useMemo, useState } from "react";
+
 
 export default function SettingsPage() {
   const env = {
@@ -13,14 +14,18 @@ export default function SettingsPage() {
     SESSIONS: process.env.NEXT_PUBLIC_SESSIONS_API,
   };
 
-  const [token, setToken] = useState<string | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    const auth = getAuth();
-    setToken(auth?.token ?? null);
-  }, []);
+const [token, setToken] = useState<string | null>(null);
+
+useEffect(() => {
+  async function load() {
+    const { data } = await supabase.auth.getSession();
+    setToken(data.session?.access_token ?? null);
+  }
+  load();
+}, []);
 
   const maskedToken = useMemo(() => {
     if (!token) return "";
@@ -37,7 +42,7 @@ export default function SettingsPage() {
 
   return (
     <RequireAuth>
-      <AppShell>
+      <AppShell title="Settings">
         <div className="card p-6">
           <div className="text-xl font-bold">Settings</div>
           <div className="mt-1 text-sm text-black/60">

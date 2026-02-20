@@ -1,27 +1,39 @@
-import { getAuth } from "./storage";
+import { supabase } from "./supabase";
 
 const AUTH = process.env.NEXT_PUBLIC_AUTH_API!;
 const COURSES = process.env.NEXT_PUBLIC_COURSES_API!;
 const ASSIGNMENTS = process.env.NEXT_PUBLIC_ASSIGNMENTS_API!;
 const SESSIONS = process.env.NEXT_PUBLIC_SESSIONS_API!;
 
-async function apiFetch<T>(base: string, path: string, init: RequestInit = {}): Promise<T> {
-  const auth = getAuth();
+async function apiFetch<T>(
+  base: string,
+  path: string,
+  init: RequestInit = {}
+): Promise<T> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  const accessToken = session?.access_token;
+
   const res = await fetch(`${base}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      ...(auth?.token ? { Authorization: `Bearer ${auth.token}` } : {}),
-      ...(init.headers || {})
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...(init.headers || {}),
     },
-    cache: "no-store"
+    cache: "no-store",
   });
 
   const data: any = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.error || data?.message || `${res.status} ${res.statusText}`);
+  if (!res.ok)
+    throw new Error(
+      data?.error || data?.message || `${res.status} ${res.statusText}`
+    );
+
   return data as T;
 }
-
 export const AuthAPI = {
   login: (email: string, role: "student" | "instructor") =>
     apiFetch<{ token: string; user: { id: string; email: string; role: string } }>(AUTH, "/auth/login", {

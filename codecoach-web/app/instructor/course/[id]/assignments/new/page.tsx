@@ -5,13 +5,10 @@ import AppShell from "@/components/AppShell";
 import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  createAssignment,
-  getCourse,
-  seedIfNeeded,
-  StarterBundle,
-  StarterFileAsset,
-} from "@/lib/mockDb";
+import { createAssignment, getCourse } from "@/lib/mockDb";
+import type { StarterFileAsset } from "@/lib/mockDb";
+
+type StarterBundle = { files: StarterFileAsset[] };
 
 const RichTextEditor = dynamic(() => import("@/components/RichTextEditor"), {
   ssr: false,
@@ -66,7 +63,7 @@ async function buildStarterBundleFromFiles(files: FileList): Promise<StarterBund
   const assets: StarterFileAsset[] = await Promise.all(
     arr.map(async (f) => {
       const dataUrl = await fileToDataUrl(f);
-      const path = (f as any).webkitRelativePath || f.name; // folder picker preserves this
+      const path = (f as any).webkitRelativePath || f.name;
       return {
         path,
         filename: f.name,
@@ -97,21 +94,22 @@ export default function InstructorCreateAssignmentPage() {
   const [starterBundle, setStarterBundle] = useState<StarterBundle | null>(null);
   const [starterLabel, setStarterLabel] = useState<string>("");
 
-  // ✅ Folder input ref so we can set the non-standard attribute safely
   const folderInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    try {
-      seedIfNeeded();
-      setCourse(getCourse(courseId));
-      setErr(null);
-    } catch (e: any) {
-      setErr(e?.message ?? "Failed to load course.");
+    async function load() {
+      try {
+        setErr(null);
+        const c = await getCourse(courseId);
+        setCourse(c);
+      } catch (e: any) {
+        setErr(e?.message ?? "Failed to load course.");
+      }
     }
+    load();
   }, [courseId]);
 
   useEffect(() => {
-    // ✅ This removes the TS error and still enables folder picking in Chrome/Edge
     if (folderInputRef.current) {
       folderInputRef.current.setAttribute("webkitdirectory", "");
       folderInputRef.current.setAttribute("directory", "");
@@ -151,7 +149,7 @@ export default function InstructorCreateAssignmentPage() {
               <div className="grid gap-2">
                 <div className="text-sm font-semibold">Assignment description</div>
                 <div className="text-xs text-black/60">
-                  Format text, add links, and insert images (demo stores content in localStorage).
+                  Format text, add links, and insert images (saved in database).
                 </div>
 
                 <RichTextEditor
@@ -181,7 +179,7 @@ export default function InstructorCreateAssignmentPage() {
                   </label>
 
                   <div className="text-xs text-black/50">
-                    Tip: keep images small (localStorage has limits).
+                    Tip: keep images small (data URLs can get big).
                   </div>
                 </div>
               </div>
@@ -203,7 +201,6 @@ export default function InstructorCreateAssignmentPage() {
                 <div className="text-sm font-semibold">Starter files (optional)</div>
 
                 <div className="flex flex-wrap gap-3 items-center">
-                  {/* Zip picker */}
                   <label className="px-3 py-2 rounded-xl border border-black/10 cursor-pointer bg-white hover:bg-black/5 transition">
                     Upload zip
                     <input
@@ -232,7 +229,6 @@ export default function InstructorCreateAssignmentPage() {
                     />
                   </label>
 
-                  {/* Multi-file picker */}
                   <label className="px-3 py-2 rounded-xl border border-black/10 cursor-pointer bg-white hover:bg-black/5 transition">
                     Upload files
                     <input
@@ -251,7 +247,6 @@ export default function InstructorCreateAssignmentPage() {
                     />
                   </label>
 
-                  {/* Folder picker (Chromium) */}
                   <label className="px-3 py-2 rounded-xl border border-black/10 cursor-pointer bg-white hover:bg-black/5 transition">
                     Upload folder
                     <input
@@ -311,18 +306,19 @@ export default function InstructorCreateAssignmentPage() {
                 <button
                   className="btn-primary"
                   disabled={!canCreate}
-                  onClick={() => {
+                  onClick={async () => {
                     try {
                       if (!title.trim()) throw new Error("Title required.");
                       if (htmlLooksEmpty(instructionsHtml)) throw new Error("Description required.");
                       if (!isValidHttpUrl(tutorialUrl)) throw new Error("Tutorial link must be a valid URL.");
 
-                      createAssignment(courseId, {
+                      await createAssignment({
+                        course_id: courseId,
                         title,
                         instructionsHtml,
                         fundamentals: splitCsv(fundamentals),
                         objectives: splitCsv(objectives),
-                        tutorialUrl: tutorialUrl.trim() ? tutorialUrl.trim() : undefined,
+                        tutorialUrl: tutorialUrl.trim() ? tutorialUrl.trim() : null,
                         starterBundle: starterBundle ?? null,
                       });
 

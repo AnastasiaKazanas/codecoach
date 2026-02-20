@@ -2,15 +2,14 @@
 
 import RequireAuth from "@/components/RequireAuth";
 import AppShell from "@/components/AppShell";
+import { useParams, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import {
   getCourse,
   getCourseProfile,
   getCourseAssignments,
   getSubmissionsForStudentInCourse,
-  seedIfNeeded,
 } from "@/lib/mockDb";
-import { useParams, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
 
 export default function InstructorStudentInCoursePage() {
   const router = useRouter();
@@ -24,23 +23,28 @@ export default function InstructorStudentInCoursePage() {
   const [subs, setSubs] = useState<any[]>([]);
   const [err, setErr] = useState<string | null>(null);
 
-  function refresh() {
-    try {
-      seedIfNeeded();
-      setCourse(getCourse(courseId));
-      setProfile(getCourseProfile(courseId, studentEmail));
-      setAssignments(getCourseAssignments(courseId));
-      setSubs(getSubmissionsForStudentInCourse(courseId, studentEmail));
-      setErr(null);
-    } catch (e: any) {
-      setErr(e?.message ?? "Failed to load student view.");
-    }
-  }
+async function refresh() {
+  try {
+    setErr(null);
 
-  useEffect(() => {
-    refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [courseId, studentEmail]);
+    const c = await getCourse(courseId);
+    const p = await getCourseProfile(courseId, studentEmail);
+    const a = await getCourseAssignments(courseId);
+    const s = await getSubmissionsForStudentInCourse(courseId, studentEmail);
+
+    setCourse(c);
+    setProfile(p);
+    setAssignments(a);
+    setSubs(s);
+  } catch (e: any) {
+    setErr(e?.message ?? "Failed to load student details.");
+  }
+}
+
+useEffect(() => {
+  refresh();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [courseId, studentEmail]);
 
   const subsByAssignment = useMemo(() => {
     const map = new Map<string, any[]>();

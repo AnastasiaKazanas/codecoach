@@ -2,65 +2,62 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { isNorthwesternEmail, setAuth } from "@/lib/storage";
+import { supabase } from "@/lib/supabase";
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<"student" | "instructor">("student");
+  const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  function onLogin() {
-    setErr(null);
+  async function onLogin() {
+    try {
+      setErr(null);
+      setLoading(true);
 
-    if (!isNorthwesternEmail(email)) {
-      setErr("Please use your @u.northwestern.edu email.");
-      return;
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+
+      if (error) throw error;
+
+      // optional: route based on role stored in your public.users table
+      // simplest MVP: just send to dashboard and let dashboard redirect
+      router.replace("/dashboard");
+    } catch (e: any) {
+      setErr(e?.message ?? "Login failed.");
+    } finally {
+      setLoading(false);
     }
-
-    // MVP: accept any NU email, mint a local “token”
-    setAuth({
-      email: email.trim(),
-      role,
-      token: `dev-${Date.now()}`
-    });
-
-    router.push("/dashboard");
   }
 
   return (
-    <div className="min-h-screen bg-[#F6F4FA] p-10">
-      <div className="mx-auto max-w-xl">
-        <div className="card p-6">
-          <div className="text-2xl font-bold" style={{ color: "var(--nu-purple)" }}>
-            CodeCoach
-          </div>
-          <div className="mt-1 text-sm text-black/60">Northwestern academic workspace</div>
+    <div className="min-h-screen flex items-center justify-center bg-[#F7F6FB] p-6">
+      <div className="card p-6 w-full max-w-md space-y-4">
+        <div className="text-2xl font-extrabold">CodeCoach</div>
 
-          <div className="mt-6">
-            <label className="text-xs font-semibold text-black/70">Email</label>
-            <input
-              className="input mt-1"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@u.northwestern.edu"
-            />
-          </div>
-
-          <div className="mt-4">
-            <label className="text-xs font-semibold text-black/70">Role</label>
-            <select className="input mt-1" value={role} onChange={(e) => setRole(e.target.value as any)}>
-              <option value="student">Student</option>
-              <option value="instructor">Instructor</option>
-            </select>
-          </div>
-
-          {err ? <div className="mt-3 text-sm text-red-700">{err}</div> : null}
-
-          <button className="btn-primary mt-5 w-full" onClick={onLogin}>
-            Sign in
-          </button>
+        <div className="grid gap-2">
+          <div className="text-sm font-semibold">Email</div>
+          <input className="input" value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
+
+        <div className="grid gap-2">
+          <div className="text-sm font-semibold">Password</div>
+          <input
+            className="input"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </div>
+
+        {err ? <div className="text-sm text-red-700">{err}</div> : null}
+
+        <button className="btn-primary w-full" disabled={loading} onClick={onLogin}>
+          {loading ? "Signing in…" : "Sign in"}
+        </button>
       </div>
     </div>
   );

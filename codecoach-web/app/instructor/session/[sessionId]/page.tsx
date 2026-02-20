@@ -26,7 +26,7 @@ export default function InstructorSessionTracePage({ params }: { params: { sessi
 
   return (
     <RequireAuth>
-      <AppShell>
+      <AppShell title="Learning Trace">
         <div className="card p-6">
           <div className="text-xl font-bold">Learning Trace</div>
           <div className="mt-1 text-sm text-black/60">Session ID: {sessionId}</div>

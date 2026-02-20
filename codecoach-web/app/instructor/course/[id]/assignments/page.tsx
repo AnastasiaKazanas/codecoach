@@ -4,7 +4,7 @@ import RequireAuth from "@/components/RequireAuth";
 import AppShell from "@/components/AppShell";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { getCourse, getCourseAssignments, seedIfNeeded } from "@/lib/mockDb";
+import { getCourse, getCourseAssignments } from "@/lib/db";
 
 export default function InstructorAssignmentsPage() {
   const params = useParams();
@@ -16,14 +16,18 @@ export default function InstructorAssignmentsPage() {
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      seedIfNeeded();
-      setCourse(getCourse(courseId));
-      setAssignments(getCourseAssignments(courseId));
-      setErr(null);
-    } catch (e: any) {
-      setErr(e?.message ?? "Failed to load assignments.");
+    async function load() {
+      try {
+        const c = await getCourse(courseId);
+        const a = await getCourseAssignments(courseId);
+        setCourse(c);
+        setAssignments(a);
+      } catch (e: any) {
+        setErr(e.message);
+      }
     }
+
+    load();
   }, [courseId]);
 
   return (
