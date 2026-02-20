@@ -1,22 +1,22 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { getAuth } from "@/lib/storage";
+import { supabase } from "@/lib/supabase";
 
 export default function RequireAuth({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const pathname = usePathname();
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const auth = getAuth();
-    if (!auth && pathname !== "/") {
-      router.replace("/");
-      return;
-    }
-    setReady(true);
-  }, [router, pathname]);
+    supabase.auth.getSession().then(({ data }) => {
+      if (!data.session) {
+        router.replace("/");
+      } else {
+        setReady(true);
+      }
+    });
+  }, [router]);
 
   if (!ready) return null;
   return <>{children}</>;
