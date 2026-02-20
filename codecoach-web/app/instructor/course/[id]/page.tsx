@@ -15,13 +15,11 @@ export default function InstructorCourseHubPage() {
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      seedIfNeeded();
-      setCourse(getCourse(courseId));
-      setErr(null);
-    } catch (e: any) {
-      setErr(e?.message ?? "Failed to load course.");
+    async function load() {
+      const c = await getCourse(courseId);
+      setCourse(c);
     }
+    load();
   }, [courseId]);
 
   return (
@@ -34,7 +32,7 @@ export default function InstructorCourseHubPage() {
             <div className="card p-6">
               <div className="text-xl font-bold">{course.title}</div>
               <div className="mt-1 text-sm text-black/60">
-                {course.term} • Join code:{" "}
+                {course.term} • Join code: <span className="font-semibold">{course.join_code ?? "—"}</span>
                 <span className="font-semibold">{course.joinCode}</span>
               </div>
             </div>
