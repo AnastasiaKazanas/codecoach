@@ -54,21 +54,10 @@ https://codecoach-anastasiakazanas-projects.vercel.app/
 ### Option 2: Open from the Website
 
 - Go to an assignment page in the web app.
-- Click **Open in VS Code** to auto-connect and load that assignment in the extension.  
-*(This flow is still being refined.)*
-
----
-
-## Connect Your Account (Inside VS Code)
-
-1. In the CodeCoach chat view, click **Connect**.
-2. Log in with: student@u.northwestern.edu
-3. Copy the student CodeCoach token from the web app:  
-Student → Settings → Copy token
-4. Paste the token when prompted.
-
-After connecting, you can open an assignment from within the extension.  
-*(Connection flow is still being improved.)*
+- Click **Open in VS Code**
+  - this should auto load in the gemini key and coachcoach key from web app (need to paste your gemini key in settings in web app)
+  - should also auto load in assignment
+  * need to add so that it auto opens starter files
 
 ---
 
