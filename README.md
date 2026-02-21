@@ -17,7 +17,7 @@
 
 Open:
 
-https://codecoach-6pnemrcye-anastasiakazanas-projects.vercel.app/
+https://codecoach-anastasiakazanas-projects.vercel.app/
 
 ---
 
