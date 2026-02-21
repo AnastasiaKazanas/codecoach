@@ -5,6 +5,7 @@ import AppShell from "@/components/AppShell";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { getAssignment, getCourse } from "@/lib/db";
+import { supabase } from "@/lib/supabase";
 
 type StarterFile = {
   path: string;
@@ -116,17 +117,20 @@ export default function StudentAssignmentDetailPage() {
   const courseId = params?.id;
   const assignmentId = params?.assignmentId ? decodeURIComponent(params.assignmentId) : "";
 
-  const vscodeLink = useMemo(() => {
-    const extId = "anastasiakazanas.codecoach"; // publisher.name
-    const aId = encodeURIComponent(assignmentId);
-    const cId = encodeURIComponent(courseId);
-    return `vscode://${extId}/open?assignmentId=${aId}&courseId=${cId}`;
-  }, [assignmentId, courseId]);
-
   const [course, setCourse] = useState<any>(null);
   const [asmt, setAsmt] = useState<any>(null);
   const [err, setErr] = useState<string | null>(null);
+  
+  // Supabase JWT (access token) used only to let the VS Code extension fetch settings from /api/me/codecoach
+  const [supabaseJwt, setSupabaseJwt] = useState<string | null>(null);
 
+  // Values stored server-side in user_settings (returned by /api/me/codecoach)
+  const [codecoachToken, setCodecoachToken] = useState("");
+  const [geminiKey, setGeminiKey] = useState("");
+
+  const [authToken, setAuthToken] = useState<string | null>(null);
+
+   // Load assignment + course
   useEffect(() => {
     async function load() {
       try {
@@ -142,9 +146,55 @@ export default function StudentAssignmentDetailPage() {
         setErr(e?.message ?? "Failed to load assignment.");
       }
     }
-
     load();
   }, [courseId, assignmentId]);
+
+  // Load Supabase access token (JWT) once
+  useEffect(() => {
+    async function loadToken() {
+      const { data } = await supabase.auth.getSession();
+      const t = data.session?.access_token ?? null;
+      setAuthToken(t);
+      setSupabaseJwt(t);
+    }
+    loadToken();
+  }, []);
+
+  // Load CodeCoach settings from your API (requires Authorization header)
+  // NOTE: This is the ONLY place we load the CodeCoach app token.
+  // The VS Code deep-link should NOT include geminiKey or codecoachToken.
+  useEffect(() => {
+    async function loadSettings() {
+      if (!authToken) return;
+
+      const res = await fetch("/api/me/codecoach", {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!res.ok) return;
+
+      const json = await res.json();
+      setGeminiKey(json?.geminiKey ?? "");
+      setCodecoachToken(json?.token ?? "");
+    }
+
+    loadSettings();
+  }, [authToken]);
+
+  const vscodeLink = useMemo(() => {
+    const extId = "anastasiakazanas.codecoach";
+    const aId = encodeURIComponent(assignmentId);
+    const cId = encodeURIComponent(courseId);
+
+    // IMPORTANT:
+    // - `token` on the deep link MUST be the Supabase JWT (so the extension can call /api/me/codecoach).
+    // - Do NOT put geminiKey or codecoachToken in the URL.
+    const jwt = encodeURIComponent(supabaseJwt ?? "");
+
+    return (
+      `vscode://${extId}/open?assignmentId=${aId}&courseId=${cId}` +
+      (supabaseJwt ? `&token=${jwt}` : "")
+    );
+  }, [assignmentId, courseId, supabaseJwt]);
 
   const starterFiles: StarterFile[] = useMemo(() => {
     const bundle = asmt?.starter_bundle ?? asmt?.starterBundle;
@@ -164,7 +214,7 @@ export default function StudentAssignmentDetailPage() {
 
   const tree = useMemo(() => buildTree(starterFiles), [starterFiles]);
 
-  return (
+    return (
     <RequireAuth>
       <AppShell title="Assignment">
         {err ? <div className="text-sm text-red-700">{err}</div> : null}
@@ -183,9 +233,18 @@ export default function StudentAssignmentDetailPage() {
                   Back to class
                 </button>
 
-                <a className="btn-primary w-fit" href={vscodeLink}>
-                  Connect to VS Code
-                </a>
+                <div className="flex flex-col gap-1">
+                  <a className="btn-primary w-fit" href={vscodeLink}>
+                    Connect to VS Code
+                  </a>
+                  <div className="text-xs text-black/60">
+                    {supabaseJwt ? "Student: signed in" : "Student: not signed in"}
+                    {" • "}
+                    {codecoachToken ? "CodeCoach token: ready" : "CodeCoach token: not ready"}
+                    {" • "}
+                    {geminiKey ? "Gemini key: ready" : "Gemini key: not set"}
+                  </div>
+                </div>
               </div>
             </div>
 
