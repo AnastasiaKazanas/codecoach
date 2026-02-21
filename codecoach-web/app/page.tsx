@@ -47,7 +47,7 @@ export default function LoginPage() {
         (existing?.role as Role | undefined) ?? defaultRoleForEmail(signedInEmail);
 
       // ensure row exists + updated
-      await ensureAppUser(signedInEmail, role);
+      await ensureAppUser(role);
 
       // 3) Route based on role
       router.replace(role === "instructor" ? "/instructor" : "/student");
