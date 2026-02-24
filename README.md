@@ -75,7 +75,8 @@ https://supabase.com/dashboard/project/cbdzszcojzxhqqzsyxcc/editor/17455?schema=
 ---
 
 ## things to work on
-- connect to VSCode link needs to auto open starter files 
+- fix assignment connection to vscode
+- connect to VSCode link needs to auto open starter files
 - learning summary is not working so should get that fixed (both assignment summary and overall) and that connects to profile page of web
 - should have some type of submission or way to submit work/ assignment learning summary?
 
