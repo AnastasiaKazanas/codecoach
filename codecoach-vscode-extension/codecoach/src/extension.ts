@@ -47,7 +47,9 @@ function normalizeBaseUrl(url: string) {
 
 function getWebBaseUrl(): string {
   const cfg = vscode.workspace.getConfiguration();
-  const raw = cfg.get<string>("codecoach.webBaseUrl") || "http://localhost:3000";
+  const raw =
+    cfg.get<string>("codecoach.webBaseUrl") ||
+    "https://codecoach-anastasiakazanas-projects.vercel.app";
   return normalizeBaseUrl(raw);
 }
 
