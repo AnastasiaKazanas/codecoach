@@ -60,24 +60,43 @@ async function fetchBootstrapFromWeb(
     assignmentId
   )}`;
 
-  const res = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${supabaseJwt}`,
-    },
-  });
+  try {
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${supabaseJwt}`,
+      },
+    });
 
-  const json: any = await res.json();
+    // Some failures return HTML or empty bodies; don't assume JSON.
+    const contentType = res.headers.get("content-type") || "";
+    let payload: any = null;
 
-  if (!res.ok) {
-    const message =
-      json && typeof json === "object" && "error" in json
-        ? (json as any).error
-        : "Bootstrap failed.";
+    if (contentType.includes("application/json")) {
+      try {
+        payload = await res.json();
+      } catch {
+        payload = null;
+      }
+    } else {
+      const text = await res.text().catch(() => "");
+      payload = text ? { error: text } : null;
+    }
 
-    throw new Error(message);
+    if (!res.ok) {
+      const message =
+        payload && typeof payload === "object" && "error" in payload
+          ? String((payload as any).error)
+          : `Bootstrap failed (${res.status} ${res.statusText}).`;
+
+      throw new Error(`${message}\nURL: ${url}`);
+    }
+
+    return payload as any;
+  } catch (err: any) {
+    // Node/undici network errors often surface as `TypeError: fetch failed`.
+    const msg = err?.message ?? String(err);
+    throw new Error(`Network error while calling bootstrap.\n${msg}\nURL: ${url}`);
   }
-
-  return json as any;
 }
 
 async function callGemini(apiKey: string, prompt: string) {
@@ -85,24 +104,46 @@ async function callGemini(apiKey: string, prompt: string) {
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent` +
     `?key=${encodeURIComponent(apiKey)}`;
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.3 },
-    }),
-  });
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.3 },
+      }),
+    });
 
-  const data: any = await res.json();
-  if (!res.ok) {
-    throw new Error(data?.error?.message ?? "Gemini request failed.");
+    const contentType = res.headers.get("content-type") || "";
+    let data: any = null;
+
+    if (contentType.includes("application/json")) {
+      try {
+        data = await res.json();
+      } catch {
+        data = null;
+      }
+    } else {
+      const text = await res.text().catch(() => "");
+      data = text ? { error: { message: text } } : null;
+    }
+
+    if (!res.ok) {
+      const apiMsg = data?.error?.message;
+      throw new Error(
+        `${apiMsg ?? `Gemini request failed (${res.status} ${res.statusText}).`}\nURL: ${url}`
+      );
+    }
+
+    return (
+      data?.candidates?.[0]?.content?.parts
+        ?.map((p: any) => p?.text)
+        .join("") ?? "No response."
+    );
+  } catch (err: any) {
+    const msg = err?.message ?? String(err);
+    throw new Error(`Network error while calling Gemini.\n${msg}`);
   }
-
-  return (
-    data?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text).join("") ??
-    "No response."
-  );
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -229,9 +270,7 @@ ${userText}
             `Loaded "${activeSession.assignment.title}".`
           );
         } catch (e: any) {
-          vscode.window.showErrorMessage(
-            e?.message ?? "Failed to connect."
-          );
+          vscode.window.showErrorMessage(e?.message ?? "Failed to connect.");
         }
       },
     })
