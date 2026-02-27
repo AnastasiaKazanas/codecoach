@@ -221,19 +221,25 @@ async function maybeInstallStarterFromBootstrap(
       fs.mkdirSync(assignmentsDir);
     }
 
-    const newFolderPath = path.join(
-      assignmentsDir,
-      `assignment.title.replace(/[^a-z0-9]/gi, "-")`
-    );
+    // 🔥 Properly compute folder name
+    const rawTitle =
+      activeSession?.assignment?.title || "assignment";
 
-    fs.mkdirSync(newFolderPath);
+    const safeTitle = rawTitle
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/gi, "-")
+      .replace(/^-+|-+$/g, "");
+
+    const newFolderPath = path.join(assignmentsDir, safeTitle);
+
+    fs.mkdirSync(newFolderPath, { recursive: true });
 
     const newFolderUri = vscode.Uri.file(newFolderPath);
 
-    await openFolderAndReload(newFolderUri);
-
     const pending: PendingStarter = { zipUrl, suggestedOpen };
     await context.globalState.update(PENDING_STARTER_KEY, pending);
+
+    await openFolderAndReload(newFolderUri);
 
     return;
   }
