@@ -210,15 +210,32 @@ async function maybeInstallStarterFromBootstrap(
   // Ensure a workspace folder exists; if not, pick one and reopen.
   const existing = firstWorkspaceFolderUri();
   if (!existing) {
-    const folder = await promptForWorkspaceFolder();
-    if (!folder) {
-      throw new Error("No folder selected. Open a folder in VS Code to install starter files.");
+    const os = require("os");
+    const path = require("path");
+    const fs = require("fs");
+
+    const baseDir = os.homedir();
+    const assignmentsDir = path.join(baseDir, "CodeCoachAssignments");
+
+    if (!fs.existsSync(assignmentsDir)) {
+      fs.mkdirSync(assignmentsDir);
     }
+
+    const newFolderPath = path.join(
+      assignmentsDir,
+      `assignment.title.replace(/[^a-z0-9]/gi, "-")`
+    );
+
+    fs.mkdirSync(newFolderPath);
+
+    const newFolderUri = vscode.Uri.file(newFolderPath);
+
+    await openFolderAndReload(newFolderUri);
 
     const pending: PendingStarter = { zipUrl, suggestedOpen };
     await context.globalState.update(PENDING_STARTER_KEY, pending);
-    await openFolderAndReload(folder);
-    return; // window reloads
+
+    return;
   }
 
   log(`Downloading starter zip: ${zipUrl}`);
