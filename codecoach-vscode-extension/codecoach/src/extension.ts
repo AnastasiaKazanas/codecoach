@@ -7,6 +7,7 @@ const SUPABASE_JWT_KEY = "codecoach.supabaseJwt";
 const AUTH_TOKEN_KEY = "codecoach.authToken";
 
 const PENDING_STARTER_KEY = "codecoach.pendingStarter";
+const ACTIVE_SESSION_KEY = "codecoach.activeSession";
 const STARTER_ZIP_MAX_BYTES = 50 * 1024 * 1024; // 50MB safety cap
 
 type Assignment = {
@@ -237,7 +238,10 @@ async function maybeInstallStarterFromBootstrap(
     const newFolderUri = vscode.Uri.file(newFolderPath);
 
     const pending: PendingStarter = { zipUrl, suggestedOpen };
-    await context.globalState.update(PENDING_STARTER_KEY, pending);
+    await context.globalState.update(
+      ACTIVE_SESSION_KEY,
+      activeSession
+    );
 
     await openFolderAndReload(newFolderUri);
 
@@ -428,7 +432,19 @@ ${userText}
 
     isStudentSignedIn = !!savedJwt;
     isAccountConnected = !!savedToken && !!savedGemini;
+
+    // 🔥 RESTORE ACTIVE SESSION AFTER RELOAD
+    const savedSession = context.globalState.get<ActiveSession>(
+      ACTIVE_SESSION_KEY
+    );
+
+    if (savedSession) {
+      activeSession = savedSession;
+      log(`Restored active session: ${savedSession.assignment.title}`);
+    }
+
     renderStatus();
+
     log(
       `startup status: studentSignedIn=${isStudentSignedIn} accountConnected=${isAccountConnected}`
     );
@@ -506,6 +522,11 @@ ${userText}
                 : [],
             },
           };
+
+          await context.globalState.update(
+            ACTIVE_SESSION_KEY,
+            activeSession
+          );
 
           // Option A: if instructor uploaded a starter zip, bootstrap can include a signed URL.
           // For now we try:
