@@ -13,6 +13,12 @@ export type StarterBundle = {
   files: StarterFileAsset[];
 };
 
+// Option A: store only a Storage reference in the DB
+export type StarterBundleRef = {
+  zipPath: string;
+  open?: string[];
+};
+
 /* ---------- HELPERS ---------- */
 
 function randomJoinCode(len = 6) {
@@ -206,23 +212,150 @@ export async function getAssignment(assignmentId: string) {
 }
 
 export async function createAssignment(payload: any) {
+  const courseId = payload.course_id ?? payload.courseId;
+
+  const starterZipFile: File | null = payload.starterZipFile ?? null;
+
   const mapped = {
-    course_id: payload.course_id ?? payload.courseId,
+    course_id: courseId,
     title: payload.title ?? null,
 
-    // DB columns you showed in Supabase:
+    // DB columns
     instructions_html: payload.instructions_html ?? payload.instructionsHtml ?? null,
     instructions: payload.instructions ?? null,
     tutorial_url: payload.tutorial_url ?? payload.tutorialUrl ?? null,
-    starter_bundle: payload.starter_bundle ?? payload.starterBundle ?? null,
+
+    // Legacy support: if caller passes starter_bundle/starterBundle and no zip, keep it.
+    // If a zip is provided, we will overwrite starter_bundle after uploading to Storage.
+    starter_bundle: starterZipFile ? null : (payload.starter_bundle ?? payload.starterBundle ?? null),
 
     fundamentals: payload.fundamentals ?? null,
     objectives: payload.objectives ?? null,
   };
 
-  const { data, error } = await supabase.from("assignments").insert(mapped).select().single();
+  const { data: created, error: createErr } = await supabase
+    .from("assignments")
+    .insert(mapped)
+    .select()
+    .single();
+
+  if (createErr) throw createErr;
+
+  // Option A: upload starter zip to Storage and store a small reference in starter_bundle
+  if (!starterZipFile) return created;
+
+  const assignmentId = created.id as string;
+  const rawName = (starterZipFile as any)?.name || "starter.zip";
+  const safeName = String(rawName).replace(/[^a-zA-Z0-9._-]/g, "_") || "starter.zip";
+  const zipPath = `course_${courseId}/assignment_${assignmentId}/${safeName}`;
+
+  const { error: upErr } = await supabase.storage
+    .from("starter-zips")
+    .upload(zipPath, starterZipFile, { upsert: true, contentType: "application/zip" });
+
+  if (upErr) throw upErr;
+
+  const starterBundleRef: StarterBundleRef = { zipPath, open: [] };
+
+  const { data: updated, error: updErr } = await supabase
+    .from("assignments")
+    .update({ starter_bundle: starterBundleRef })
+    .eq("id", assignmentId)
+    .select()
+    .single();
+
+  if (updErr) throw updErr;
+
+  return updated;
+}
+
+export async function updateAssignment(payload: {
+  id: string;
+  course_id?: string;
+  courseId?: string;
+  title?: string;
+  instructionsHtml?: string;
+  instructions_html?: string;
+  instructions?: string | null;
+  tutorialUrl?: string | null;
+  tutorial_url?: string | null;
+  fundamentals?: string[];
+  objectives?: string[];
+  starterZipFile?: File | null;
+  clearStarterZip?: boolean;
+}) {
+  const assignmentId = payload.id;
+
+  // Only include fields that are present on the payload so edits are non-destructive.
+  const patch: any = {};
+
+  if (typeof payload.title === "string") patch.title = payload.title;
+
+  if ("instructionsHtml" in payload || "instructions_html" in payload) {
+    patch.instructions_html = payload.instructions_html ?? payload.instructionsHtml ?? null;
+  }
+
+  if ("instructions" in payload) {
+    patch.instructions = payload.instructions ?? null;
+  }
+
+  if ("tutorialUrl" in payload || "tutorial_url" in payload) {
+    patch.tutorial_url = payload.tutorial_url ?? payload.tutorialUrl ?? null;
+  }
+
+  if ("fundamentals" in payload) patch.fundamentals = payload.fundamentals ?? null;
+  if ("objectives" in payload) patch.objectives = payload.objectives ?? null;
+
+  const starterZipFile: File | null = payload.starterZipFile ?? null;
+  const clearStarterZip = !!payload.clearStarterZip;
+
+  // If user explicitly clears, clear first (unless they are also uploading a replacement zip).
+  if (clearStarterZip && !starterZipFile) {
+    patch.starter_bundle = null;
+  }
+
+  // First apply patch (metadata/text fields)
+  if (Object.keys(patch).length > 0) {
+    const { error: updErr } = await supabase.from("assignments").update(patch).eq("id", assignmentId);
+    if (updErr) throw updErr;
+  }
+
+  // Option A: replace starter zip if provided
+  if (starterZipFile) {
+    const current = await getAssignment(assignmentId);
+    const courseId = current.course_id ?? (payload.course_id ?? payload.courseId);
+    if (!courseId) throw new Error("Missing course id for starter zip upload.");
+
+    // Use a stable name so updates overwrite instead of creating orphan zips.
+    const zipPath = `course_${courseId}/assignment_${assignmentId}/starter.zip`;
+
+    const { error: upErr } = await supabase.storage
+      .from("starter-zips")
+      .upload(zipPath, starterZipFile, { upsert: true, contentType: "application/zip" });
+
+    if (upErr) throw upErr;
+
+    const starterBundleRef: StarterBundleRef = { zipPath, open: [] };
+
+    const { error: sbErr } = await supabase
+      .from("assignments")
+      .update({ starter_bundle: starterBundleRef })
+      .eq("id", assignmentId);
+
+    if (sbErr) throw sbErr;
+  }
+
+  // Return fresh row
+  return await getAssignment(assignmentId);
+}
+
+export async function getStarterZipSignedUrl(zipPath: string, expiresSeconds = 60 * 15) {
+  const { data, error } = await supabase.storage
+    .from("starter-zips")
+    .createSignedUrl(zipPath, expiresSeconds);
+
   if (error) throw error;
-  return data;
+  return data?.signedUrl ?? "";
 }
 
 /* ---------- SUBMISSIONS ---------- */
