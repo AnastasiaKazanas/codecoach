@@ -6,9 +6,6 @@ import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createAssignment, getCourse } from "@/lib/db";
-import type { StarterFileAsset } from "@/lib/db";
-
-type StarterBundle = { files: StarterFileAsset[] };
 
 const RichTextEditor = dynamic(() => import("@/components/RichTextEditor"), {
   ssr: false,
@@ -57,26 +54,6 @@ async function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
-async function buildStarterBundleFromFiles(files: FileList): Promise<StarterBundle> {
-  const arr = Array.from(files);
-
-  const assets: StarterFileAsset[] = await Promise.all(
-    arr.map(async (f) => {
-      const dataUrl = await fileToDataUrl(f);
-      const path = (f as any).webkitRelativePath || f.name;
-      return {
-        path,
-        filename: f.name,
-        mime: f.type || "application/octet-stream",
-        dataUrl,
-      };
-    })
-  );
-
-  assets.sort((a, b) => a.path.localeCompare(b.path));
-  return { files: assets };
-}
-
 export default function InstructorCreateAssignmentPage() {
   const params = useParams();
   const router = useRouter();
@@ -91,8 +68,9 @@ export default function InstructorCreateAssignmentPage() {
   const [objectives, setObjectives] = useState("");
   const [tutorialUrl, setTutorialUrl] = useState("");
 
-  const [starterBundle, setStarterBundle] = useState<StarterBundle | null>(null);
+  const [starterZipFile, setStarterZipFile] = useState<File | null>(null);
   const [starterLabel, setStarterLabel] = useState<string>("");
+  const [starterWarn, setStarterWarn] = useState<string>("");
 
   const folderInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -212,25 +190,16 @@ export default function InstructorCreateAssignmentPage() {
                         const f = input.files?.[0];
                         if (!f) return;
 
-                        const dataUrl = await fileToDataUrl(f);
-                        setStarterBundle({
-                          files: [
-                            {
-                              path: f.name,
-                              filename: f.name,
-                              mime: f.type || "application/zip",
-                              dataUrl,
-                            },
-                          ],
-                        });
+                        setStarterZipFile(f);
                         setStarterLabel(`Zip: ${f.name}`);
+                        setStarterWarn("");
                         input.value = "";
                       }}
                     />
                   </label>
 
                   <label className="px-3 py-2 rounded-xl border border-black/10 cursor-pointer bg-white hover:bg-black/5 transition">
-                    Upload files
+                    Upload files (zip only for VS Code)
                     <input
                       type="file"
                       multiple
@@ -239,16 +208,14 @@ export default function InstructorCreateAssignmentPage() {
                         const input = e.target as HTMLInputElement;
                         if (!input.files?.length) return;
 
-                        const bundle = await buildStarterBundleFromFiles(input.files);
-                        setStarterBundle(bundle);
-                        setStarterLabel(`${bundle.files.length} file(s)`);
+                        setStarterWarn("For now, VS Code connect only supports starter files uploaded as a .zip. Please zip the folder and upload the zip.");
                         input.value = "";
                       }}
                     />
                   </label>
 
                   <label className="px-3 py-2 rounded-xl border border-black/10 cursor-pointer bg-white hover:bg-black/5 transition">
-                    Upload folder
+                    Upload folder (zip only for VS Code)
                     <input
                       ref={folderInputRef}
                       type="file"
@@ -258,20 +225,19 @@ export default function InstructorCreateAssignmentPage() {
                         const input = e.target as HTMLInputElement;
                         if (!input.files?.length) return;
 
-                        const bundle = await buildStarterBundleFromFiles(input.files);
-                        setStarterBundle(bundle);
-                        setStarterLabel(`Folder: ${bundle.files.length} file(s)`);
+                        setStarterWarn("For now, VS Code connect only supports starter files uploaded as a .zip. Please zip the folder and upload the zip.");
                         input.value = "";
                       }}
                     />
                   </label>
 
-                  {starterBundle ? (
+                  {starterZipFile ? (
                     <button
                       className="px-3 py-2 rounded-xl border border-black/10 bg-white hover:bg-black/5 transition text-sm"
                       onClick={() => {
-                        setStarterBundle(null);
+                        setStarterZipFile(null);
                         setStarterLabel("");
+                        setStarterWarn("");
                       }}
                     >
                       Clear
@@ -280,6 +246,7 @@ export default function InstructorCreateAssignmentPage() {
                 </div>
 
                 {starterLabel ? <div className="text-xs text-black/60">Selected: {starterLabel}</div> : null}
+                {starterWarn ? <div className="text-xs text-amber-700">{starterWarn}</div> : null}
               </div>
 
               <div className="grid gap-2">
@@ -319,7 +286,7 @@ export default function InstructorCreateAssignmentPage() {
                         fundamentals: splitCsv(fundamentals),
                         objectives: splitCsv(objectives),
                         tutorialUrl: tutorialUrl.trim() ? tutorialUrl.trim() : undefined,
-                        starterBundle: starterBundle ?? null,
+                        starterZipFile: starterZipFile ?? null,
                       });
 
                       router.push(`/instructor/course/${courseId}/assignments`);

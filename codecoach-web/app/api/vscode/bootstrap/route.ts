@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+export const runtime = "nodejs";
+
 function supabaseAdminish() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const service = process.env.SUPABASE_SERVICE_ROLE_KEY!; // server-only
@@ -56,11 +58,55 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: asmtErr.message }, { status: 400 });
   }
 
+  let starter: { zipUrl: string; open: string[] } | null = null;
+
+  try {
+    let sb: any = assignment?.starter_bundle;
+
+    // Handle JSON string case
+    if (typeof sb === "string") {
+      try {
+        sb = JSON.parse(sb);
+      } catch {
+        sb = null;
+      }
+    }
+
+    const zipPath =
+      sb && typeof sb === "object" && typeof sb.zipPath === "string"
+        ? sb.zipPath.trim()
+        : "";
+
+    const open =
+      sb && typeof sb === "object" && Array.isArray(sb.open)
+        ? sb.open
+        : [];
+
+    if (zipPath) {
+      const { data: signed, error: signedErr } = await supabase
+        .storage
+        .from("starter-zips")
+        .createSignedUrl(zipPath, 60 * 15);
+
+      if (signedErr) {
+        console.error("Signed URL error:", signedErr);
+      } else if (signed?.signedUrl) {
+        starter = {
+          zipUrl: signed.signedUrl,
+          open,
+        };
+      }
+    }
+  } catch (e) {
+    console.error("Starter bootstrap error:", e);
+    starter = null;
+  }
+
   return NextResponse.json({
     geminiKey: settings?.gemini_api_key ?? "",
-    // Provide both names so the extension can read either
     token: settings?.codecoach_token ?? "",
     codecoachToken: settings?.codecoach_token ?? "",
     assignment,
+    starter,
   });
 }
