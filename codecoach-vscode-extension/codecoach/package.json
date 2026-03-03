@@ -5,9 +5,11 @@
   "description": "AI-powered programming explanations and hints inside VS Code",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.108.0"
+    "vscode": "^1.80.0"
   },
-  "categories": ["Other"],
+  "categories": [
+    "Other"
+  ],
   "main": "./dist/extension.js",
   "activationEvents": [
     "onStartupFinished",
@@ -28,18 +30,46 @@
       "id": "anastasiakazanas.codecoach"
     },
     "commands": [
-      { "command": "codecoach.openChat", "title": "CodeCoach: Open Chat" },
-      { "command": "codecoach.connect", "title": "CodeCoach: Connect (from Web Link)" },
-      { "command": "codecoach.setApiKey", "title": "CodeCoach: Set Gemini API Key" },
-
-      { "command": "codecoach.setApiBaseUrls", "title": "CodeCoach: Set API Base URLs" },
-      { "command": "codecoach.connectAccount", "title": "CodeCoach: Connect Account (Paste Token)" },
-      { "command": "codecoach.openAssignment", "title": "CodeCoach: Open Assignment" },
-      { "command": "codecoach.submitLearningProcess", "title": "CodeCoach: Submit Learning Process" },
-
-      { "command": "codecoach.clearChat", "title": "CodeCoach: Clear Chat (Session)" },
-      { "command": "codecoach.exportLearningSummary", "title": "CodeCoach: Export Learning Summary" },
-      { "command": "codecoach.debugAuth", "title": "CodeCoach: Debug Auth Status" }
+      {
+        "command": "codecoach.openChat",
+        "title": "CodeCoach: Open Chat"
+      },
+      {
+        "command": "codecoach.connect",
+        "title": "CodeCoach: Connect (from Web Link)"
+      },
+      {
+        "command": "codecoach.setApiKey",
+        "title": "CodeCoach: Set Gemini API Key"
+      },
+      {
+        "command": "codecoach.setApiBaseUrls",
+        "title": "CodeCoach: Set API Base URLs"
+      },
+      {
+        "command": "codecoach.connectAccount",
+        "title": "CodeCoach: Connect Account (Paste Token)"
+      },
+      {
+        "command": "codecoach.openAssignment",
+        "title": "CodeCoach: Open Assignment"
+      },
+      {
+        "command": "codecoach.submitLearningProcess",
+        "title": "CodeCoach: Submit Learning Process"
+      },
+      {
+        "command": "codecoach.clearChat",
+        "title": "CodeCoach: Clear Chat (Session)"
+      },
+      {
+        "command": "codecoach.exportLearningSummary",
+        "title": "CodeCoach: Export Learning Summary"
+      },
+      {
+        "command": "codecoach.debugAuth",
+        "title": "CodeCoach: Debug Auth Status"
+      }
     ],
     "configuration": {
       "title": "CodeCoach",
@@ -97,8 +127,8 @@
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
-    "@types/node": "22.x",
-    "@types/vscode": "^1.108.0",
+    "@types/node": "^22.19.11",
+    "@types/vscode": "^1.109.0",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
     "esbuild": "^0.27.2",
