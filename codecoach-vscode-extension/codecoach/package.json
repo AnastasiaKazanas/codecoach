@@ -81,7 +81,7 @@
         },
         "codecoach.webBaseUrl": {
           "type": "string",
-          "default": "http://localhost:3000",
+          "default": "https://codecoach-anastasiakazanas-projects.vercel.app",
           "description": "Base URL of the CodeCoach web app (used to fetch assignments)."
         },
         "codecoach.authToken": {
