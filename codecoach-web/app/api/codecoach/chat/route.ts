@@ -18,6 +18,31 @@ function supabaseAdmin() {
   );
 }
 
+const DEFAULT_SYSTEM_PROMPT = `
+You are CodeCoach, an expert programming tutor helping a student complete a programming assignment.
+
+Your goal is to guide the student toward the solution without immediately giving the full answer.
+
+Rules:
+• If the student suggests a correct idea, acknowledge it clearly.
+• Do NOT question correct reasoning.
+• Ask only ONE follow-up question at a time.
+• If the student is mostly correct, help refine their thinking.
+• If the student struggles for multiple turns, provide a hint.
+• Avoid repetitive questioning.
+
+Formatting rules:
+• When showing code or diagrams, always use triple backticks.
+• Preserve spacing exactly for ASCII diagrams.
+• Ensure diagrams match assignment instructions.
+
+Tone:
+• Friendly
+• Encouraging
+• Clear
+• Concise
+`;
+
 async function callGemini(messages: any[], apiKey: string) {
   const genAI = new GoogleGenerativeAI(apiKey);
 
@@ -25,17 +50,14 @@ async function callGemini(messages: any[], apiKey: string) {
     model: "gemini-2.0-flash"
   });
 
-  const prompt = messages
-    .map((m) => m.parts?.[0]?.text || "")
-    .join("\n");
-
-  const result = await model.generateContent(prompt);
+  const result = await model.generateContent({
+    contents: messages
+  });
 
   const response = await result.response;
 
   return response.text();
 }
-
 
 async function updateSessionSummary(
   supabase: any,
@@ -55,7 +77,7 @@ async function updateSessionSummary(
     .join("\n");
 
   const summaryPrompt = `
-Summarize the student's learning progress.
+Summarize the student's learning progress and key concepts they worked on.
 
 Conversation:
 ${transcript}
@@ -104,7 +126,7 @@ export async function POST(req: Request) {
 
     const sessionId = body.sessionId;
     const message = body.message;
-    const systemPrompt = body.systemPrompt || "";
+    const systemPrompt = body.systemPrompt || DEFAULT_SYSTEM_PROMPT;
     const code = body.code || "";
     const cursorLine = body.cursorLine ?? null;
 
@@ -115,7 +137,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // get session
+    // Ensure session exists
     let { data: session } = await supabase
       .from("sessions")
       .select("*")
@@ -140,7 +162,7 @@ export async function POST(req: Request) {
       session = created;
     }
 
-    // get gemini key
+    // Get Gemini key
     const { data: settings } = await supabase
       .from("user_settings")
       .select("gemini_api_key")
@@ -156,7 +178,7 @@ export async function POST(req: Request) {
 
     const geminiKey = settings.gemini_api_key;
 
-    // store user message
+    // Store user message
     await supabase.from("messages").insert({
       session_id: sessionId,
       role: "user",
@@ -169,27 +191,42 @@ export async function POST(req: Request) {
       .eq("session_id", sessionId)
       .order("created_at", { ascending: true });
 
-  const geminiMessages = [
-    {
+    const geminiMessages: any[] = [];
+
+    // System prompt
+    geminiMessages.push({
       role: "user",
-      parts: [{
-        text: `${systemPrompt}
+      parts: [{ text: systemPrompt }]
+    });
 
-  Student message:
-  ${message}
+    // Conversation history
+    if (history?.length) {
+      for (const m of history.slice(0, -1)) {
+        geminiMessages.push({
+          role: m.role === "assistant" ? "model" : "user",
+          parts: [{ text: m.content }]
+        });
+      }
+    }
 
-  Student cursor line:
-  ${cursorLine}
+    // Current student context
+    geminiMessages.push({
+      role: "user",
+      parts: [
+        {
+          text: `
+Student message:
+${message}
 
-  Student's current code:
-  ${code}`
-      }]
-    },
-    ...(history?.slice(0, -1).map((m: any) => ({
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: m.content }]
-    })) ?? [])
-  ];
+Student cursor line:
+${cursorLine ?? "unknown"}
+
+Student's current code:
+${code || "No code provided"}
+`
+        }
+      ]
+    });
 
     const reply = await callGemini(geminiMessages, geminiKey);
 

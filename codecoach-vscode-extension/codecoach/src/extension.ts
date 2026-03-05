@@ -482,7 +482,7 @@ ${userText}
     isStudentSignedIn = !!savedJwt;
     isAccountConnected = !!savedToken && !!savedGemini;
 
-    // 🔥 RESTORE ACTIVE SESSION AFTER RELOAD
+
     const savedSession = context.globalState.get<ActiveSession>(
       ACTIVE_SESSION_KEY
     );
