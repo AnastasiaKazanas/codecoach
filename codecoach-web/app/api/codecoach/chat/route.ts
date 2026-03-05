@@ -1,10 +1,21 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+export const runtime = "nodejs";
+
+function getBearer(req: Request) {
+  const h = req.headers.get("authorization") || "";
+  const m = h.match(/^Bearer\s+(.+)$/i);
+  return m?.[1] ?? null;
+}
+
+function supabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false } }
+  );
+}
 
 async function callGemini(messages: any[], apiKey: string) {
   const res = await fetch(
@@ -16,16 +27,12 @@ async function callGemini(messages: any[], apiKey: string) {
       },
       body: JSON.stringify({
         contents: messages,
-        generationConfig: {
-          temperature: 0.4
-        }
+        generationConfig: { temperature: 0.4 }
       })
     }
   );
 
   const data = await res.json();
-
-  console.log("Gemini response:", data);
 
   return (
     data?.candidates?.[0]?.content?.parts
@@ -34,38 +41,39 @@ async function callGemini(messages: any[], apiKey: string) {
   );
 }
 
-async function updateSessionSummary(sessionId: string, apiKey: string) {
+async function updateSessionSummary(
+  supabase: any,
+  sessionId: string,
+  apiKey: string
+) {
   const { data: messages } = await supabase
     .from("messages")
     .select("role,content")
     .eq("session_id", sessionId)
     .order("created_at", { ascending: true });
 
-  if (!messages || messages.length === 0) return;
+  if (!messages?.length) return;
 
   const transcript = messages
-    .map((m) => `${m.role}: ${m.content}`)
+    .map((m: any) => `${m.role}: ${m.content}`)
     .join("\n");
 
   const summaryPrompt = `
-Summarize the student's learning progress in this tutoring session.
-Focus on:
-- Concepts learned
-- Misconceptions
-- Skills practiced
+Summarize the student's learning progress.
 
 Conversation:
 ${transcript}
 `;
 
-  const summaryMessages = [
-    {
-      role: "user",
-      parts: [{ text: summaryPrompt }]
-    }
-  ];
-
-  const summary = await callGemini(summaryMessages, apiKey);
+  const summary = await callGemini(
+    [
+      {
+        role: "user",
+        parts: [{ text: summaryPrompt }]
+      }
+    ],
+    apiKey
+  );
 
   await supabase
     .from("sessions")
@@ -74,6 +82,26 @@ ${transcript}
 }
 
 export async function POST(req: Request) {
+  const supabase = supabaseAdmin();
+
+  const jwt = getBearer(req);
+  if (!jwt) {
+    return NextResponse.json(
+      { error: "Missing auth token" },
+      { status: 401 }
+    );
+  }
+
+  const { data: userData } = await supabase.auth.getUser(jwt);
+  const user = userData?.user;
+
+  if (!user) {
+    return NextResponse.json(
+      { error: "Invalid user" },
+      { status: 401 }
+    );
+  }
+
   const { sessionId, message, systemPrompt } = await req.json();
 
   if (!sessionId || !message) {
@@ -83,32 +111,39 @@ export async function POST(req: Request) {
     );
   }
 
+  // get or create session
   let { data: session } = await supabase
     .from("sessions")
-    .select("user_id")
+    .select("*")
     .eq("id", sessionId)
-    .single();
+    .maybeSingle();
 
   if (!session) {
-    const created = await supabase
+    const { data: created, error } = await supabase
       .from("sessions")
       .insert({
         id: sessionId,
-        user_id: "dev-user"
+        user_id: user.id
       })
       .select()
       .single();
 
-    session = created.data;
+    if (error) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 500 }
+      );
+    }
+
+    session = created;
   }
 
-  if (!session) throw new Error("Failed to create session");
-
+  // get gemini key
   const { data: settings } = await supabase
     .from("user_settings")
     .select("gemini_api_key")
-    .eq("user_id", session.user_id)
-    .single();
+    .eq("user_id", user.id)
+    .maybeSingle();
 
   if (!settings?.gemini_api_key) {
     return NextResponse.json(
@@ -119,14 +154,14 @@ export async function POST(req: Request) {
 
   const geminiKey = settings.gemini_api_key;
 
-  // Save user message
+  // save user message
   await supabase.from("messages").insert({
     session_id: sessionId,
     role: "user",
     content: message
   });
 
-  // Load full conversation history
+  // load history
   const { data: history } = await supabase
     .from("messages")
     .select("role,content")
@@ -138,24 +173,21 @@ export async function POST(req: Request) {
       role: "user",
       parts: [{ text: systemPrompt }]
     },
-    ...(history?.map((m) => ({
+    ...(history?.map((m: any) => ({
       role: m.role === "assistant" ? "model" : "user",
       parts: [{ text: m.content }]
     })) ?? [])
   ];
 
-  // Call Gemini with full context
   const reply = await callGemini(geminiMessages, geminiKey);
 
-  // Save assistant reply
   await supabase.from("messages").insert({
     session_id: sessionId,
     role: "assistant",
     content: reply
   });
 
-  // Update tutoring summary
-  await updateSessionSummary(sessionId, geminiKey);
+  await updateSessionSummary(supabase, sessionId, geminiKey);
 
   return NextResponse.json({ reply });
 }
