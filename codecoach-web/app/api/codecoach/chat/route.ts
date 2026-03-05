@@ -64,6 +64,14 @@ async function updateSessionSummary(
   sessionId: string,
   apiKey: string
 ) {
+  const { data: session } = await supabase
+    .from("sessions")
+    .select("id,user_id,assignment_id")
+    .eq("id", sessionId)
+    .maybeSingle();
+
+  if (!session) return;
+
   const { data: messages } = await supabase
     .from("messages")
     .select("role,content")
@@ -75,6 +83,10 @@ async function updateSessionSummary(
   const transcript = messages
     .map((m: any) => `${m.role}: ${m.content}`)
     .join("\n");
+
+  // ------------------------------------------------
+  // 1️⃣ Generate session summary
+  // ------------------------------------------------
 
   const summaryPrompt = `
 Summarize the student's learning progress and key concepts they worked on.
@@ -97,7 +109,81 @@ ${transcript}
     .from("sessions")
     .update({ summary })
     .eq("id", sessionId);
+
+  // ------------------------------------------------
+  // 2️⃣ Evaluate assignment fundamentals
+  // ------------------------------------------------
+
+  if (!session.assignment_id) return;
+
+  const { data: assignment } = await supabase
+    .from("assignments")
+    .select("fundamentals,course_id")
+    .eq("id", session.assignment_id)
+    .maybeSingle();
+
+  if (!assignment?.fundamentals) return;
+
+  const fundamentals = assignment.fundamentals;
+
+  const conceptPrompt = `
+You are evaluating a student's learning progress.
+
+Assignment fundamentals:
+${fundamentals.join("\n")}
+
+Conversation:
+${transcript}
+
+Return ONLY valid JSON in this format:
+
+{
+ "mastered": [],
+ "working_on": []
 }
+
+Rules:
+• Only include concepts from the fundamentals list
+• mastered = student clearly demonstrated understanding
+• working_on = student attempted but not fully mastered
+`;
+
+  const conceptResponse = await callGemini(
+    [
+      {
+        role: "user",
+        parts: [{ text: conceptPrompt }]
+      }
+    ],
+    apiKey
+  );
+
+  let parsed;
+
+  try {
+    parsed = JSON.parse(conceptResponse);
+  } catch {
+    parsed = { mastered: [], working_on: [] };
+  }
+
+  // ------------------------------------------------
+  // 3️⃣ Update learning profile
+  // ------------------------------------------------
+
+  await supabase
+    .from("learning_profiles")
+    .upsert(
+      {
+        course_id: assignment.course_id,
+        student_id: session.user_id,
+        mastered: parsed.mastered || [],
+        working_on: parsed.working_on || [],
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: "course_id,student_id" }
+    );
+}
+
 
 export async function POST(req: Request) {
   const supabase = supabaseAdmin();
