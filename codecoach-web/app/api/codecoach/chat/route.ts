@@ -84,110 +84,122 @@ ${transcript}
 export async function POST(req: Request) {
   const supabase = supabaseAdmin();
 
-  const jwt = getBearer(req);
-  if (!jwt) {
-    return NextResponse.json(
-      { error: "Missing auth token" },
-      { status: 401 }
-    );
-  }
+  try {
+    const jwt = getBearer(req);
 
-  const { data: userData } = await supabase.auth.getUser(jwt);
-  const user = userData?.user;
+    if (!jwt) {
+      return NextResponse.json({ error: "Missing auth token" }, { status: 401 });
+    }
 
-  if (!user) {
-    return NextResponse.json(
-      { error: "Invalid user" },
-      { status: 401 }
-    );
-  }
+    const { data: userData, error: userErr } = await supabase.auth.getUser(jwt);
+    const user = userData?.user;
 
-  const { sessionId, message, systemPrompt } = await req.json();
+    if (userErr || !user) {
+      return NextResponse.json({ error: "Invalid user" }, { status: 401 });
+    }
 
-  if (!sessionId || !message) {
-    return NextResponse.json(
-      { error: "Missing sessionId or message" },
-      { status: 400 }
-    );
-  }
+    let body: any = {};
 
-  // get or create session
-  let { data: session } = await supabase
-    .from("sessions")
-    .select("*")
-    .eq("id", sessionId)
-    .maybeSingle();
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
 
-  if (!session) {
-    const { data: created, error } = await supabase
-      .from("sessions")
-      .insert({
-        id: sessionId,
-        user_id: user.id
-      })
-      .select()
-      .single();
+    const sessionId = body.sessionId;
+    const message = body.message;
+    const systemPrompt = body.systemPrompt || "";
 
-    if (error) {
+    if (!sessionId || !message) {
       return NextResponse.json(
-        { error: error.message },
-        { status: 500 }
+        { error: "Missing sessionId or message" },
+        { status: 400 }
       );
     }
 
-    session = created;
-  }
+    // get session
+    let { data: session } = await supabase
+      .from("sessions")
+      .select("*")
+      .eq("id", sessionId)
+      .maybeSingle();
 
-  // get gemini key
-  const { data: settings } = await supabase
-    .from("user_settings")
-    .select("gemini_api_key")
-    .eq("user_id", user.id)
-    .maybeSingle();
+    if (!session) {
+      const { data: created, error } = await supabase
+        .from("sessions")
+        .insert({
+          id: sessionId,
+          user_id: user.id
+        })
+        .select()
+        .single();
 
-  if (!settings?.gemini_api_key) {
+      if (error) {
+        console.error("Session insert error:", error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      session = created;
+    }
+
+    // get gemini key
+    const { data: settings } = await supabase
+      .from("user_settings")
+      .select("gemini_api_key")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!settings?.gemini_api_key) {
+      return NextResponse.json(
+        { error: "Student has not configured a Gemini API key" },
+        { status: 400 }
+      );
+    }
+
+    const geminiKey = settings.gemini_api_key;
+
+    // store user message
+    await supabase.from("messages").insert({
+      session_id: sessionId,
+      role: "user",
+      content: message
+    });
+
+    const { data: history } = await supabase
+      .from("messages")
+      .select("role,content")
+      .eq("session_id", sessionId)
+      .order("created_at", { ascending: true });
+
+    const geminiMessages = [
+      {
+        role: "user",
+        parts: [{ text: systemPrompt }]
+      },
+      ...(history?.map((m: any) => ({
+        role: m.role === "assistant" ? "model" : "user",
+        parts: [{ text: m.content }]
+      })) ?? [])
+    ];
+
+    const reply = await callGemini(geminiMessages, geminiKey);
+
+    await supabase.from("messages").insert({
+      session_id: sessionId,
+      role: "assistant",
+      content: reply
+    });
+
+    await updateSessionSummary(supabase, sessionId, geminiKey);
+
+    return NextResponse.json({ reply });
+
+  } catch (err: any) {
+    console.error("Chat route error:", err);
+
     return NextResponse.json(
-      { error: "Student has not configured a Gemini API key" },
-      { status: 400 }
+      { error: err?.message || "Internal error" },
+      { status: 500 }
     );
   }
-
-  const geminiKey = settings.gemini_api_key;
-
-  // save user message
-  await supabase.from("messages").insert({
-    session_id: sessionId,
-    role: "user",
-    content: message
-  });
-
-  // load history
-  const { data: history } = await supabase
-    .from("messages")
-    .select("role,content")
-    .eq("session_id", sessionId)
-    .order("created_at", { ascending: true });
-
-  const geminiMessages = [
-    {
-      role: "user",
-      parts: [{ text: systemPrompt }]
-    },
-    ...(history?.map((m: any) => ({
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: m.content }]
-    })) ?? [])
-  ];
-
-  const reply = await callGemini(geminiMessages, geminiKey);
-
-  await supabase.from("messages").insert({
-    session_id: sessionId,
-    role: "assistant",
-    content: reply
-  });
-
-  await updateSessionSummary(supabase, sessionId, geminiKey);
-
-  return NextResponse.json({ reply });
 }
