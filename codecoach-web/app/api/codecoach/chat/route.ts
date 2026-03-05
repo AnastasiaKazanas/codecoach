@@ -19,7 +19,7 @@ function supabaseAdmin() {
 
 async function callGemini(messages: any[], apiKey: string) {
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
     {
       method: "POST",
       headers: {
@@ -39,16 +39,10 @@ async function callGemini(messages: any[], apiKey: string) {
   console.log("Gemini raw response:", JSON.stringify(data, null, 2));
 
   if (data?.candidates?.length > 0) {
-    return data.candidates[0].content.parts
-      .map((p: any) => p.text)
-      .join("");
+    return data.candidates[0].content.parts[0].text;
   }
 
-  if (data?.promptFeedback?.blockReason) {
-    return "I'm sorry — I couldn't generate a response because the request was blocked by Gemini's safety system. Try rephrasing your question.";
-  }
-
-  return "I'm not sure how to respond to that. Could you clarify what you're trying to do?";
+  return "I'm not sure how to respond to that.";
 }
 
 async function updateSessionSummary(
