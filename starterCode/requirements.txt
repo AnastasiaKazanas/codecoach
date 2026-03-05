@@ -1,0 +1,7 @@
+[ ] My program runs without crashing.
+[ ] I used input() at least 3 times.
+[ ] I converted age to int using int().
+[ ] I converted favorite number to float using float().
+[ ] I computed age next year correctly.
+[ ] I computed doubled and squared correctly.
+[ ] My output summary is easy to read.

@@ -161,7 +161,8 @@ Rules:
   let parsed;
 
   try {
-    parsed = JSON.parse(conceptResponse);
+    parsed = JSON.parse(conceptResponse.replace(/```json|```/g, "").trim()
+);
   } catch {
     parsed = { mastered: [], working_on: [] };
   }
@@ -177,7 +178,7 @@ Rules:
         course_id: assignment.course_id,
         student_id: session.user_id,
         mastered: parsed.mastered || [],
-        working_on: parsed.working_on || [],
+        developing: parsed.working_on || [],
         updated_at: new Date().toISOString()
       },
       { onConflict: "course_id,student_id" }
