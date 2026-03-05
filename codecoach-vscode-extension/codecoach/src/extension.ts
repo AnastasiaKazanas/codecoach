@@ -598,7 +598,7 @@ ${userText}
 
           activeSession = {
             assignmentId: raw.id,
-            sessionId: `live-${Date.now()}`,
+            sessionId: crypto.randomUUID(),
             assignment: {
               id: raw.id,
               courseId: raw.course_id ?? raw.courseId,
