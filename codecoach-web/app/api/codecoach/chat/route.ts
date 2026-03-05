@@ -6,26 +6,50 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-async function callGemini(message: string) {
+/* -----------------------------
+   GEMINI CALL
+----------------------------- */
+
+async function callGemini(prompt: string) {
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: message }] }],
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: prompt }],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.3,
+        },
       }),
     }
   );
 
   const data = await res.json();
 
-  return (
+  console.log("Gemini response:", JSON.stringify(data, null, 2));
+
+  const text =
     data?.candidates?.[0]?.content?.parts
-      ?.map((p: any) => p.text)
-      .join("") ?? "No response"
-  );
+      ?.map((p: any) => p?.text ?? "")
+      .join("") ||
+    data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+    data?.candidates?.[0]?.output ||
+    null;
+
+  return text ?? "No response";
 }
+
+/* -----------------------------
+   SESSION SUMMARY
+----------------------------- */
 
 async function updateSessionSummary(sessionId: string) {
   const { data: messages } = await supabase
@@ -42,8 +66,13 @@ async function updateSessionSummary(sessionId: string) {
 
   const summaryPrompt = `
 Summarize the student's learning progress in this session.
-Focus on concepts learned and difficulties.
 
+Focus on:
+• concepts learned
+• misconceptions
+• areas of difficulty
+
+Conversation:
 ${transcript}
 `;
 
@@ -55,27 +84,64 @@ ${transcript}
     .eq("id", sessionId);
 }
 
+
 export async function POST(req: Request) {
-  const { sessionId, message } = await req.json();
+  try {
+    const body = await req.json();
 
-  // save user message
-  await supabase.from("messages").insert({
-    session_id: sessionId,
-    role: "user",
-    content: message,
-  });
+    const sessionId = body?.sessionId;
+    const message = body?.message;
 
-  const reply = await callGemini(message);
+    if (!sessionId || !message) {
+      return NextResponse.json(
+        { error: "Missing sessionId or message" },
+        { status: 400 }
+      );
+    }
 
-  // save assistant message
-  await supabase.from("messages").insert({
-    session_id: sessionId,
-    role: "assistant",
-    content: reply,
-  });
+    // ensure session exists
+    await supabase.from("sessions").upsert({
+      id: sessionId,
+      updated_at: new Date().toISOString(),
+    });
 
-  // update session summary
-  await updateSessionSummary(sessionId);
+    // save user message
+    await supabase.from("messages").insert({
+      session_id: sessionId,
+      role: "user",
+      content: message,
+    });
 
-  return NextResponse.json({ reply });
+    const prompt = `
+You are CodeCoach, an AI programming tutor.
+
+Guide the student instead of giving answers.
+Ask one question per response.
+Never provide full solutions.
+
+Student message:
+${message}
+`;
+
+    const reply = await callGemini(prompt);
+
+    // save assistant message
+    await supabase.from("messages").insert({
+      session_id: sessionId,
+      role: "assistant",
+      content: reply,
+    });
+
+    await updateSessionSummary(sessionId);
+
+    return NextResponse.json({ reply });
+
+  } catch (err: any) {
+    console.error("CHAT API ERROR:", err);
+
+    return NextResponse.json(
+      { error: err.message ?? "Server error" },
+      { status: 500 }
+    );
+  }
 }
