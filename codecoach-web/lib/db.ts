@@ -456,32 +456,18 @@ export async function getAssignmentLearning(
 ) {
   const studentId = await getUserIdByEmail(studentEmail);
 
-  /* -----------------------
-     Latest session summary
-  ----------------------- */
-
   const { data: session } = await supabase
     .from("sessions")
-    .select("summary, assignment_id")
+    .select("summary, mastered, developing")
     .eq("assignment_id", assignmentId)
     .eq("user_id", studentId)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  /* -----------------------
-     Learning profile
-  ----------------------- */
-
-  const { data: profile } = await supabase
-    .from("learning_profiles")
-    .select("mastered, developing")
-    .eq("student_id", studentId)
-    .maybeSingle();
-
   return {
     summary: session?.summary ?? null,
-    mastered: profile?.mastered ?? [],
-    developing: profile?.developing ?? []
+    mastered: session?.mastered ?? [],
+    developing: session?.developing ?? []
   };
 }
