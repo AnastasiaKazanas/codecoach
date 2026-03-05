@@ -503,7 +503,11 @@ ${userText}
     );
 
     const data: any = await res.json();
-    return data.reply;
+
+    console.log("CodeCoach API response:", data);
+    log("API response: " + JSON.stringify(data));
+
+    return data.reply ?? data.response ?? data.text ?? "No response from server.";
 
   };
 
