@@ -235,7 +235,8 @@ export async function POST(req: Request) {
         .from("sessions")
         .insert({
           id: sessionId,
-          user_id: user.id
+          user_id: user.id,
+          assignment_id: body.assignmentId || null
         })
         .select()
         .single();
