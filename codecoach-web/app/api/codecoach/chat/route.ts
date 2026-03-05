@@ -6,13 +6,9 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-/* -----------------------------
-   GEMINI CALL
------------------------------ */
-
-async function callGemini(prompt: string) {
+async function callGemini(message: string, apiKey: string) {
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`,
     {
       method: "POST",
       headers: {
@@ -22,36 +18,25 @@ async function callGemini(prompt: string) {
         contents: [
           {
             role: "user",
-            parts: [{ text: prompt }],
+            parts: [{ text: message }],
           },
         ],
-        generationConfig: {
-          temperature: 0.3,
-        },
       }),
     }
   );
 
   const data = await res.json();
 
-  console.log("Gemini response:", JSON.stringify(data, null, 2));
+  console.log("Gemini response:", data);
 
-  const text =
+  return (
     data?.candidates?.[0]?.content?.parts
-      ?.map((p: any) => p?.text ?? "")
-      .join("") ||
-    data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-    data?.candidates?.[0]?.output ||
-    null;
-
-  return text ?? "No response";
+      ?.map((p: any) => p.text)
+      .join("") ?? "No response"
+  );
 }
 
-/* -----------------------------
-   SESSION SUMMARY
------------------------------ */
-
-async function updateSessionSummary(sessionId: string) {
+async function updateSessionSummary(sessionId: string, apiKey: string) {
   const { data: messages } = await supabase
     .from("messages")
     .select("role,content")
@@ -66,17 +51,12 @@ async function updateSessionSummary(sessionId: string) {
 
   const summaryPrompt = `
 Summarize the student's learning progress in this session.
+Focus on concepts learned and difficulties.
 
-Focus on:
-• concepts learned
-• misconceptions
-• areas of difficulty
-
-Conversation:
 ${transcript}
 `;
 
-  const summary = await callGemini(summaryPrompt);
+  const summary = await callGemini(summaryPrompt, apiKey);
 
   await supabase
     .from("sessions")
@@ -84,64 +64,65 @@ ${transcript}
     .eq("id", sessionId);
 }
 
-
 export async function POST(req: Request) {
-  try {
-    const body = await req.json();
+  const { sessionId, message } = await req.json();
 
-    const sessionId = body?.sessionId;
-    const message = body?.message;
-
-    if (!sessionId || !message) {
-      return NextResponse.json(
-        { error: "Missing sessionId or message" },
-        { status: 400 }
-      );
-    }
-
-    // ensure session exists
-    await supabase.from("sessions").upsert({
-      id: sessionId,
-      updated_at: new Date().toISOString(),
-    });
-
-    // save user message
-    await supabase.from("messages").insert({
-      session_id: sessionId,
-      role: "user",
-      content: message,
-    });
-
-    const prompt = `
-You are CodeCoach, an AI programming tutor.
-
-Guide the student instead of giving answers.
-Ask one question per response.
-Never provide full solutions.
-
-Student message:
-${message}
-`;
-
-    const reply = await callGemini(prompt);
-
-    // save assistant message
-    await supabase.from("messages").insert({
-      session_id: sessionId,
-      role: "assistant",
-      content: reply,
-    });
-
-    await updateSessionSummary(sessionId);
-
-    return NextResponse.json({ reply });
-
-  } catch (err: any) {
-    console.error("CHAT API ERROR:", err);
-
+  if (!sessionId || !message) {
     return NextResponse.json(
-      { error: err.message ?? "Server error" },
-      { status: 500 }
+      { error: "Missing sessionId or message" },
+      { status: 400 }
     );
   }
+
+  // get session
+  const { data: session, error: sessionErr } = await supabase
+    .from("sessions")
+    .select("user_id")
+    .eq("id", sessionId)
+    .single();
+
+  if (sessionErr || !session) {
+    return NextResponse.json(
+      { error: "Invalid session" },
+      { status: 400 }
+    );
+  }
+
+  // get student's Gemini key
+  const { data: settings, error: settingsErr } = await supabase
+    .from("user_settings")
+    .select("gemini_api_key")
+    .eq("user_id", session.user_id)
+    .single();
+
+  if (settingsErr || !settings?.gemini_api_key) {
+    return NextResponse.json(
+      { error: "Student has not configured a Gemini API key" },
+      { status: 400 }
+    );
+  }
+
+  const geminiKey = settings.gemini_api_key;
+
+  // save user message
+  await supabase.from("messages").insert({
+    session_id: sessionId,
+    role: "user",
+    content: message,
+  });
+
+  // generate reply
+  const reply = await callGemini(message, geminiKey);
+
+  // save assistant message
+  await supabase.from("messages").insert({
+    session_id: sessionId,
+    role: "assistant",
+    content: reply,
+  });
+
+  // update learning summary
+  await updateSessionSummary(sessionId, geminiKey);
+
+  return NextResponse.json({ reply });
 }
