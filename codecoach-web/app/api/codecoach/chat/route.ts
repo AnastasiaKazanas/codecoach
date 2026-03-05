@@ -179,6 +179,7 @@ Rules:
         student_id: session.user_id,
         mastered: parsed.mastered || [],
         developing: parsed.working_on || [],
+        topics: fundamentals,
         updated_at: new Date().toISOString()
       },
       { onConflict: "course_id,student_id" }
