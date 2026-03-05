@@ -456,18 +456,33 @@ export async function getAssignmentLearning(
 ) {
   const studentId = await getUserIdByEmail(studentEmail);
 
-  const { data: session } = await supabase
+  const { data } = await supabase
     .from("sessions")
-    .select("summary, mastered, developing")
+    .select("summary, mastered, developing, created_at")
     .eq("assignment_id", assignmentId)
     .eq("user_id", studentId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .order("created_at", { ascending: false });
+
+  if (!data || data.length === 0) {
+    return {
+      summary: null,
+      mastered: [],
+      developing: []
+    };
+  }
+
+  const latestWithLearning = data.find(
+    s =>
+      (s.mastered && s.mastered.length > 0) ||
+      (s.developing && s.developing.length > 0) ||
+      s.summary
+  );
+
+  const session = latestWithLearning ?? data[0];
 
   return {
-    summary: session?.summary ?? null,
-    mastered: session?.mastered ?? [],
-    developing: session?.developing ?? []
+    summary: session.summary ?? null,
+    mastered: session.mastered ?? [],
+    developing: session.developing ?? []
   };
 }

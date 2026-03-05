@@ -290,7 +290,7 @@ export async function POST(req: Request) {
 
     // Conversation history
     if (history?.length) {
-      for (const m of history.slice(0, -1)) {
+      for (const m of history || []) {
         geminiMessages.push({
           role: m.role === "assistant" ? "model" : "user",
           parts: [{ text: m.content }]

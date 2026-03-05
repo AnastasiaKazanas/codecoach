@@ -551,31 +551,37 @@ ${userText}
 
           const raw = bootstrap.assignment;
 
-          activeSession = {
-            assignmentId: raw.id,
-            sessionId: crypto.randomUUID(),
-            assignment: {
-              id: raw.id,
-              courseId: raw.course_id ?? raw.courseId,
-              title: raw.title,
-              instructions:
-                raw.instructions ??
-                raw.instructions_html ??
-                raw.instructionsHtml ??
-                "",
-              fundamentals: Array.isArray(raw.fundamentals)
-                ? raw.fundamentals
-                : [],
-              objectives: Array.isArray(raw.objectives)
-                ? raw.objectives
-                : [],
-            },
-          };
+          const savedSession = context.globalState.get<ActiveSession>(ACTIVE_SESSION_KEY);
 
-          await context.globalState.update(
-            ACTIVE_SESSION_KEY,
-            activeSession
-          );
+      if (savedSession && savedSession.assignmentId === raw.id) {
+        activeSession = savedSession;
+      } else {
+        activeSession = {
+          assignmentId: raw.id,
+          sessionId: crypto.randomUUID(),
+          assignment: {
+            id: raw.id,
+            courseId: raw.course_id ?? raw.courseId,
+            title: raw.title,
+            instructions:
+              raw.instructions ??
+              raw.instructions_html ??
+              raw.instructionsHtml ??
+              "",
+            fundamentals: Array.isArray(raw.fundamentals)
+              ? raw.fundamentals
+              : [],
+            objectives: Array.isArray(raw.objectives)
+              ? raw.objectives
+              : [],
+          },
+        };
+
+        await context.globalState.update(
+          ACTIVE_SESSION_KEY,
+          activeSession
+        );
+      }
 
           // Option A: if instructor uploaded a starter zip, bootstrap can include a signed URL.
           // For now we try:
@@ -591,7 +597,8 @@ ${userText}
 
           try {
             await maybeInstallStarterFromBootstrap(context, starter);
-          } catch (starterErr: any) {
+          } 
+          catch (starterErr: any) {
             log(`starter install skipped/failed: ${starterErr?.message ?? String(starterErr)}`);
           }
 
