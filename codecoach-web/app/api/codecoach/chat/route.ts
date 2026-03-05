@@ -6,22 +6,20 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-async function callGemini(message: string, apiKey: string) {
+async function callGemini(messages: any[], apiKey: string) {
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`,
     {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: message }],
-          },
-        ],
-      }),
+        contents: messages,
+        generationConfig: {
+          temperature: 0.4
+        }
+      })
     }
   );
 
@@ -50,13 +48,24 @@ async function updateSessionSummary(sessionId: string, apiKey: string) {
     .join("\n");
 
   const summaryPrompt = `
-Summarize the student's learning progress in this session.
-Focus on concepts learned and difficulties.
+Summarize the student's learning progress in this tutoring session.
+Focus on:
+- Concepts learned
+- Misconceptions
+- Skills practiced
 
+Conversation:
 ${transcript}
 `;
 
-  const summary = await callGemini(summaryPrompt, apiKey);
+  const summaryMessages = [
+    {
+      role: "user",
+      parts: [{ text: summaryPrompt }]
+    }
+  ];
+
+  const summary = await callGemini(summaryMessages, apiKey);
 
   await supabase
     .from("sessions")
@@ -65,7 +74,7 @@ ${transcript}
 }
 
 export async function POST(req: Request) {
-  const { sessionId, message } = await req.json();
+  const { sessionId, message, systemPrompt } = await req.json();
 
   if (!sessionId || !message) {
     return NextResponse.json(
@@ -74,28 +83,26 @@ export async function POST(req: Request) {
     );
   }
 
-  // get session
-  const { data: session, error: sessionErr } = await supabase
+  const { data: session } = await supabase
     .from("sessions")
     .select("user_id")
     .eq("id", sessionId)
     .single();
 
-  if (sessionErr || !session) {
+  if (!session) {
     return NextResponse.json(
       { error: "Invalid session" },
       { status: 400 }
     );
   }
 
-  // get student's Gemini key
-  const { data: settings, error: settingsErr } = await supabase
+  const { data: settings } = await supabase
     .from("user_settings")
     .select("gemini_api_key")
     .eq("user_id", session.user_id)
     .single();
 
-  if (settingsErr || !settings?.gemini_api_key) {
+  if (!settings?.gemini_api_key) {
     return NextResponse.json(
       { error: "Student has not configured a Gemini API key" },
       { status: 400 }
@@ -104,24 +111,42 @@ export async function POST(req: Request) {
 
   const geminiKey = settings.gemini_api_key;
 
-  // save user message
+  // Save user message
   await supabase.from("messages").insert({
     session_id: sessionId,
     role: "user",
-    content: message,
+    content: message
   });
 
-  // generate reply
-  const reply = await callGemini(message, geminiKey);
+  // Load full conversation history
+  const { data: history } = await supabase
+    .from("messages")
+    .select("role,content")
+    .eq("session_id", sessionId)
+    .order("created_at", { ascending: true });
 
-  // save assistant message
+  const geminiMessages = [
+    {
+      role: "user",
+      parts: [{ text: systemPrompt }]
+    },
+    ...(history?.map((m) => ({
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: m.content }]
+    })) ?? [])
+  ];
+
+  // Call Gemini with full context
+  const reply = await callGemini(geminiMessages, geminiKey);
+
+  // Save assistant reply
   await supabase.from("messages").insert({
     session_id: sessionId,
     role: "assistant",
-    content: reply,
+    content: reply
   });
 
-  // update learning summary
+  // Update tutoring summary
   await updateSessionSummary(sessionId, geminiKey);
 
   return NextResponse.json({ reply });

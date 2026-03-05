@@ -496,7 +496,8 @@ ${userText}
         body: JSON.stringify({
           sessionId: activeSession?.sessionId,
           assignmentId: activeSession?.assignmentId,
-          message: userText
+          message: userText,
+          systemPrompt: prompt
         })
       }
     );
