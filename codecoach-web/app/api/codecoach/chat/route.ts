@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export const runtime = "nodejs";
 
@@ -18,32 +19,23 @@ function supabaseAdmin() {
 }
 
 async function callGemini(messages: any[], apiKey: string) {
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        contents: messages,
-        generationConfig: {
-          temperature: 0.4
-        }
-      })
-    }
-  );
+  const genAI = new GoogleGenerativeAI(apiKey);
 
-  const data = await res.json();
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.0-flash"
+  });
 
-  console.log("Gemini raw response:", JSON.stringify(data, null, 2));
+  const prompt = messages
+    .map((m) => m.parts?.[0]?.text || "")
+    .join("\n");
 
-  if (data?.candidates?.length > 0) {
-    return data.candidates[0].content.parts[0].text;
-  }
+  const result = await model.generateContent(prompt);
 
-  return "I'm not sure how to respond to that.";
+  const response = await result.response;
+
+  return response.text();
 }
+
 
 async function updateSessionSummary(
   supabase: any,

@@ -324,52 +324,6 @@ async function fetchBootstrapFromWeb(
   }
 }
 
-async function callGemini(apiKey: string, prompt: string) {
-  const url =
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent` +
-    `?key=${encodeURIComponent(apiKey)}`;
-
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.3 },
-      }),
-    });
-
-    const contentType = res.headers.get("content-type") || "";
-    let data: any = null;
-
-    if (contentType.includes("application/json")) {
-      try {
-        data = await res.json();
-      } catch {
-        data = null;
-      }
-    } else {
-      const text = await res.text().catch(() => "");
-      data = text ? { error: { message: text } } : null;
-    }
-
-    if (!res.ok) {
-      const apiMsg = data?.error?.message;
-      throw new Error(
-        `${apiMsg ?? `Gemini request failed (${res.status} ${res.statusText}).`}\nURL: ${url}`
-      );
-    }
-
-    return (
-      data?.candidates?.[0]?.content?.parts
-        ?.map((p: any) => p?.text)
-        .join("") ?? "No response."
-    );
-  } catch (err: any) {
-    const msg = err?.message ?? String(err);
-    throw new Error(`Network error while calling Gemini.\n${msg}`);
-  }
-}
 
 export function activate(context: vscode.ExtensionContext) {
   output = vscode.window.createOutputChannel("CodeCoach");
@@ -389,11 +343,6 @@ export function activate(context: vscode.ExtensionContext) {
   void maybeInstallPendingStarter(context);
 
   const onUserMessage = async (userText: string): Promise<string> => {
-    const apiKey = await context.secrets.get(GEMINI_KEY_NAME);
-    if (!apiKey) {
-      throw new Error("No Gemini API key set.");
-    }
-
     const assignmentContext = activeSession
       ? `
 Assignment: ${activeSession.assignment.title}
@@ -507,13 +456,14 @@ ${userText}
       }
     );
 
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`CodeCoach API error (${res.status}): ${text}`);
+    }
+
     const data: any = await res.json();
 
-    console.log("CodeCoach API response:", data);
-    log("API response: " + JSON.stringify(data));
-
-    return data.reply ?? data.response ?? data.text ?? "No response from server.";
-
+    return data.reply ?? "No response from server.";
   };
 
   provider = new CodeCoachViewProvider(context, onUserMessage);
