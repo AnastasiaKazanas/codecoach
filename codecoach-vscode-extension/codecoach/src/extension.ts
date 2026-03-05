@@ -483,7 +483,27 @@ User:
 ${userText}
 `.trim();
 
-    return await callGemini(apiKey, prompt);
+    const jwt = await context.secrets.get(SUPABASE_JWT_KEY);
+
+    const res = await fetch(
+      `${getWebBaseUrl()}/api/codecoach/chat`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${jwt}`
+        },
+        body: JSON.stringify({
+          sessionId: activeSession?.sessionId,
+          assignmentId: activeSession?.assignmentId,
+          message: userText
+        })
+      }
+    );
+
+    const data: any = await res.json();
+    return data.reply;
+
   };
 
   provider = new CodeCoachViewProvider(context, onUserMessage);
