@@ -102,6 +102,8 @@ export async function POST(req: Request) {
     session = created.data;
   }
 
+  if (!session) throw new Error("Failed to create session");
+
   const { data: settings } = await supabase
     .from("user_settings")
     .select("gemini_api_key")
