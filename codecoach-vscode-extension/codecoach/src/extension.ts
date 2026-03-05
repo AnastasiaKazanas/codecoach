@@ -484,6 +484,9 @@ ${userText}
 `.trim();
 
     const jwt = await context.secrets.get(SUPABASE_JWT_KEY);
+    const editor = vscode.window.activeTextEditor;
+    const code = editor ? editor.document.getText() : "";
+    const cursorLine = editor?.selection.active.line ?? 0;
 
     const res = await fetch(
       `${getWebBaseUrl()}/api/codecoach/chat`,
@@ -497,7 +500,9 @@ ${userText}
           sessionId: activeSession?.sessionId,
           assignmentId: activeSession?.assignmentId,
           message: userText,
-          systemPrompt: prompt
+          systemPrompt: prompt,
+          code,
+          cursorLine
         })
       }
     );

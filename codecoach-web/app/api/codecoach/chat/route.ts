@@ -119,6 +119,8 @@ export async function POST(req: Request) {
     const sessionId = body.sessionId;
     const message = body.message;
     const systemPrompt = body.systemPrompt || "";
+    const code = body.code || "";
+    const cursorLine = body.cursorLine ?? null;
 
     if (!sessionId || !message) {
       return NextResponse.json(
@@ -181,16 +183,27 @@ export async function POST(req: Request) {
       .eq("session_id", sessionId)
       .order("created_at", { ascending: true });
 
-    const geminiMessages = [
-      {
-        role: "user",
-        parts: [{ text: systemPrompt }]
-      },
-      ...(history?.map((m: any) => ({
-        role: m.role === "assistant" ? "model" : "user",
-        parts: [{ text: m.content }]
-      })) ?? [])
-    ];
+  const geminiMessages = [
+    {
+      role: "user",
+      parts: [{
+        text: `${systemPrompt}
+
+  Student message:
+  ${message}
+
+  Student cursor line:
+  ${cursorLine}
+
+  Student's current code:
+  ${code}`
+      }]
+    },
+    ...(history?.slice(0, -1).map((m: any) => ({
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: m.content }]
+    })) ?? [])
+  ];
 
     const reply = await callGemini(geminiMessages, geminiKey);
 
