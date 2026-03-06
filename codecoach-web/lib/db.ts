@@ -440,3 +440,49 @@ export async function upsertLearningProfile(courseId: string, studentId: string,
 export async function seedIfNeeded() {
   return;
 }
+
+export async function getAssignmentsForCourse(courseId: string) {
+  const { data } = await supabase
+    .from("assignments")
+    .select("*")
+    .eq("course_id", courseId);
+
+  return data;
+}
+
+export async function getAssignmentLearning(
+  assignmentId: string,
+  studentEmail: string
+) {
+  const studentId = await getUserIdByEmail(studentEmail);
+
+  const { data } = await supabase
+    .from("sessions")
+    .select("summary, mastered, developing, created_at")
+    .eq("assignment_id", assignmentId)
+    .eq("user_id", studentId)
+    .order("created_at", { ascending: false });
+
+  if (!data || data.length === 0) {
+    return {
+      summary: null,
+      mastered: [],
+      developing: []
+    };
+  }
+
+  const latestWithLearning = data.find(
+    s =>
+      (s.mastered && s.mastered.length > 0) ||
+      (s.developing && s.developing.length > 0) ||
+      s.summary
+  );
+
+  const session = latestWithLearning ?? data[0];
+
+  return {
+    summary: session.summary ?? null,
+    mastered: session.mastered ?? [],
+    developing: session.developing ?? []
+  };
+}
