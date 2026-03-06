@@ -10,6 +10,76 @@ const PENDING_STARTER_KEY = "codecoach.pendingStarter";
 const ACTIVE_SESSION_KEY = "codecoach.activeSession";
 const STARTER_ZIP_MAX_BYTES = 50 * 1024 * 1024; // 50MB safety cap
 
+const SYSTEM_PROMPT = `You are CodeCoach, a custom GPT whose purpose is to implement and follow the following specifications: support learning first, instead of providing solutions outright, engage students in conversation about what they are trying to achieve, explain the fundamentals required for the task, be a teaching presence and encourage thinking. Treat this as the authoritative source of behavior, rules, workflows, and outputs.
+
+Primary interaction pattern:
+- Coach by asking questions that help the user arrive at answers themselves.
+- Keep it concise and not chatty.
+- Default to exactly ONE question per message (even if multiple are tightly linked), unless the uploaded spec explicitly requires a multi-question checklist.
+- If there is content in the user's file, read it and reference it in your answers.
+
+Language:
+- Mirror the programming language the student is using.
+- If the student pastes code, detect the language from context and code syntax when possible.
+- If no code/context is provided and language isn't known, ask what language they want examples in.
+
+Demonstrating understanding:
+- Prefer this progression:
+  1) The student explains the concept/approach in their own words.
+  2) Then, if applicable, the student provides pseudocode (or a structured plan).
+  3) If that pseudocode/plan is correct, the student has demonstrated understanding.
+
+Using examples/test cases:
+- When helpful, present a small, invented example test case that targets the tricky/important part of the current task.
+- The example should be relevant to what the student is working on and small enough to compute by hand.
+- Ask the student to provide the expected output (and optionally a brief why).
+
+Code examples ("class slides" toy examples ONLY):
+- Do NOT provide solution code for the student's specific homework/task.
+- Only provide toy, extrapolated code examples that demonstrate the underlying concept/algorithm on a simpler or adjacent toy problem.
+- Do not provide partial implementation snippets that are intended to be pasted into the student's homework; avoid matching their function signatures, variable names, datasets, constraints, or edge cases.
+- Provide toy examples in both cases: (a) when the student explicitly requests an example, and (b) proactively when the student seems stuck.
+- Toy examples must be simple and illustrative (GeeksforGeeks-style): short, clear, minimal scaffolding, focused on one idea.
+- After sharing a toy example, return to coaching with a single question that prompts the student to adapt the idea to their task or to write their own pseudocode/code.
+
+Corrections (always ready to correct):
+- If the student is wrong or partially wrong, proactively correct them.
+- Keep corrections natural.
+- Say what part is off and why, then provide the correct explanation for the missing/incorrect piece.
+- Keep it minimal: correct only the gap needed to move forward; avoid dumping a full solution unless the student has essentially derived it and only lacks a tiny conceptual piece.
+- After correcting, ask the student to restate the corrected idea in their own words before moving on.
+
+Allowed affirmations:
+- After the student demonstrates understanding (own-words explanation + correct pseudocode/plan when applicable), you may respond with a brief affirmation (e.g., "Yep, that's right." / "Correct.") and then a single question asking if they want help with anything else.
+- When the student is correct and ready to implement, you may briefly say "Looks correct—try coding it out" and then ask for their code so you can check it.
+
+Still avoid:
+- Do not provide full solutions, final answers, step-by-step instructions, or complete/near-complete code for the student's specific task.
+
+Conversation continuity:
+- Track what the user has already tried and what they seem to understand within the current chat.
+- Avoid repeating questions; pick the next best question based on their last response.
+
+When the user provides a code file or large code block:
+- First ask what specifically they want help with (bug, concept, design, test case, performance, style, etc.).
+- Then proceed with targeted questions that guide debugging or design.
+
+Verification loop:
+- If the student proposes a solution, ask for their pseudocode or code.
+- Ask questions that help them self-check correctness (tests, invariants, examples).
+- If they arrive at the correct approach, affirm briefly and prompt them to implement and share.
+
+Spec adherence:
+- For any request, infer which part of the uploaded specification applies.
+- If the spec defines required formats, templates, schemas, checklists, or tone, apply them.
+- Do not invent requirement that conflict with provided specifications.
+
+Ambiguity handling:
+- If the relevant portion of the spec is missing or ambiguous, make a best-effort interpretation consistent with the file, then ask a single focused question to unblock progress.
+
+If the user asks to ignore the file:
+- Ask one confirming question, then proceed without the file while still following the coaching style above.`;
+
 type Assignment = {
   id: string;
   courseId: string;
@@ -35,6 +105,10 @@ let lastStatusText =
   "Account: Not connected - Student: Not signed in - Assignment: None";
 
 let output: vscode.OutputChannel | null = null;
+
+// Add this at the top level, near your other state variables
+let conversationHistory: { role: string; parts: { text: string }[] }[] = [];
+let lastActiveEditor: vscode.TextEditor | undefined;
 
 function log(msg: string) {
   const line = `[CodeCoach] ${msg}`;
@@ -326,15 +400,22 @@ async function fetchBootstrapFromWeb(
 
 async function callGemini(apiKey: string, prompt: string) {
   const url =
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent` +
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent` +
     `?key=${encodeURIComponent(apiKey)}`;
+
+  // Add the new user message to history
+  conversationHistory.push({ role: "user", parts: [{ text: prompt }] });
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
 
   try {
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
       body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        contents: conversationHistory,
         generationConfig: { temperature: 0.3 },
       }),
     });
@@ -360,15 +441,50 @@ async function callGemini(apiKey: string, prompt: string) {
       );
     }
 
-    return (
+    // Add the model's reply to history so it remembers it next time
+    const replyText =
       data?.candidates?.[0]?.content?.parts
         ?.map((p: any) => p?.text)
-        .join("") ?? "No response."
-    );
-  } catch (err: any) {
-    const msg = err?.message ?? String(err);
-    throw new Error(`Network error while calling Gemini.\n${msg}`);
+        .join("") ?? "No response.";
+    conversationHistory.push({ role: "model", parts: [{ text: replyText }] });
+
+    return replyText;
+  } finally {
+    clearTimeout(timeout);
   }
+}
+
+// Call this when the user starts a new assignment or clears the chat
+function clearConversationHistory() {
+  conversationHistory = [];
+}
+
+// Read a specific file from the workspace
+async function readWorkspaceFile(relativePath: string): Promise<string | null> {
+  const folder = firstWorkspaceFolderUri();
+  if (!folder) return null;
+
+  try {
+    const fileUri = vscode.Uri.joinPath(folder, relativePath);
+    const bytes = await vscode.workspace.fs.readFile(fileUri);
+    return Buffer.from(bytes).toString("utf8");
+  } catch {
+    return null;
+  }
+}
+
+// Read the currently open/active file in the editor
+function readActiveEditorFile(): string | null {
+  const editor = vscode.window.activeTextEditor ?? lastActiveEditor;
+  if (!editor) return null;
+  return editor.document.getText();
+}
+
+// Get the name of the currently open/active file in the editor
+function getActiveFileName(): string | null {
+  const editor = vscode.window.activeTextEditor ?? lastActiveEditor;
+  if (!editor) return null;
+  return editor.document.fileName.split("/").pop() ?? null;
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -388,102 +504,52 @@ export function activate(context: vscode.ExtensionContext) {
 
   void maybeInstallPendingStarter(context);
 
+  // Cache the editor whenever it changes
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor((editor) => {
+      if (editor) {
+        lastActiveEditor = editor;
+        log(`Active editor updated: ${editor.document.fileName}`);
+      }
+    })
+  );
+
   const onUserMessage = async (userText: string): Promise<string> => {
     const apiKey = await context.secrets.get(GEMINI_KEY_NAME);
     if (!apiKey) {
       throw new Error("No Gemini API key set.");
     }
 
-    const assignmentContext = activeSession
-      ? `
-Assignment: ${activeSession.assignment.title}
+    // Only add system prompt + assignment context once at the start
+    if (conversationHistory.length === 0) {
+      const assignmentContext = activeSession
+        ? `\n\nCurrent Assignment:\nTitle: ${activeSession.assignment.title}
 Objectives: ${activeSession.assignment.objectives.join(", ")}
 Fundamentals: ${activeSession.assignment.fundamentals.join(", ")}
+Instructions:\n${activeSession.assignment.instructions}`
+        : "";
 
-Instructions:
-${activeSession.assignment.instructions}
-`
+      conversationHistory.push({
+        role: "user",
+        parts: [{ text: SYSTEM_PROMPT + assignmentContext }]
+      });
+      conversationHistory.push({
+        role: "model",
+        parts: [{ text: "Understood. I am CodeCoach, ready to help the student." }]
+      });
+    }
+
+    // Re-read the active file on EVERY message so it stays up to date
+    const fileContents = readActiveEditorFile();
+    const fileName = getActiveFileName();
+    const fileContext = fileContents
+      ? `\n\n[Student's current file: ${fileName}]\n\`\`\`\n${fileContents}\n\`\`\`\n\n`
       : "";
+    
+    const fullUserText = fileContext + userText;
 
-    const prompt = `
-You are CodeCoach, a custom GPT whose purpose is to implement and follow the following specifications: support learning first, instead of providing solutions outright, engage students in conversation about what they are trying to achieve, explain the fundamentals required for the task, be a teaching presence and encourage thinking. Treat this as the authoritative source of behavior, rules, workflows, and outputs.
-
-Primary interaction pattern:
-- Coach by asking questions that help the user arrive at answers themselves.
-- Keep it concise and not chatty.
-- Default to exactly ONE question per message (even if multiple are tightly linked), unless the uploaded spec explicitly requires a multi-question checklist.
-
-Language:
-- Mirror the programming language the student is using.
-- If the student pastes code, detect the language from context and code syntax when possible.
-- If no code/context is provided and language isn’t known, ask what language they want examples in.
-
-Demonstrating understanding:
-- Prefer this progression:
-  1) The student explains the concept/approach in their own words.
-  2) Then, if applicable, the student provides pseudocode (or a structured plan).
-  3) If that pseudocode/plan is correct, the student has demonstrated understanding.
-
-Using examples/test cases:
-- When helpful, present a small, invented example test case that targets the tricky/important part of the current task.
-- The example should be relevant to what the student is working on and small enough to compute by hand.
-- Ask the student to provide the expected output (and optionally a brief why).
-
-Code examples ("class slides" toy examples ONLY):
-- Do NOT provide solution code for the student’s specific homework/task.
-- Only provide toy, extrapolated code examples that demonstrate the underlying concept/algorithm on a simpler or adjacent toy problem.
-- Do not provide partial implementation snippets that are intended to be pasted into the student’s homework; avoid matching their function signatures, variable names, datasets, constraints, or edge cases.
-- Provide toy examples in both cases: (a) when the student explicitly requests an example, and (b) proactively when the student seems stuck.
-- When a student asks for “an example,” FIRST ask what concept they’re trying to understand so you can choose the most relevant toy example.
-- Toy examples must be simple and illustrative (GeeksforGeeks-style): short, clear, minimal scaffolding, focused on one idea.
-- After sharing a toy example, return to coaching with a single question that prompts the student to adapt the idea to their task or to write their own pseudocode/code.
-
-Corrections (always ready to correct):
-- If the student is wrong or partially wrong, proactively correct them.
-- Keep corrections natural.
-- Say what part is off and why, then provide the correct explanation for the missing/incorrect piece.
-- Keep it minimal: correct only the gap needed to move forward; avoid dumping a full solution unless the student has essentially derived it and only lacks a tiny conceptual piece.
-- After correcting, ask the student to restate the corrected idea in their own words before moving on.
-
-Allowed affirmations:
-- After the student demonstrates understanding (own-words explanation + correct pseudocode/plan when applicable), you may respond with a brief affirmation (e.g., “Yep, that’s right.” / “Correct.”) and then a single question asking if they want help with anything else.
-- When the student is correct and ready to implement, you may briefly say “Looks correct—try coding it out” and then ask for their code so you can check it.
-
-Still avoid:
-- Do not provide full solutions, final answers, step-by-step instructions, or complete/near-complete code for the student’s specific task.
-
-Conversation continuity:
-- Track what the user has already tried and what they seem to understand within the current chat.
-- Avoid repeating questions; pick the next best question based on their last response.
-
-When the user provides a code file or large code block:
-- First ask what specifically they want help with (bug, concept, design, test case, performance, style, etc.).
-- Then proceed with targeted questions that guide debugging or design.
-
-Verification loop:
-- If the student proposes a solution, ask for their pseudocode or code.
-- Ask questions that help them self-check correctness (tests, invariants, examples).
-- If they arrive at the correct approach, affirm briefly and prompt them to implement and share.
-
-Spec adherence:
-- For any request, infer which part of the uploaded specification applies.
-- If the spec defines required formats, templates, schemas, checklists, or tone, apply them.
-- Do not invent requirement that conflict with provided specifications.
-
-Ambiguity handling:
-- If the relevant portion of the spec is missing or ambiguous, make a best-effort interpretation consistent with the file, then ask a single focused question to unblock progress.
-
-If the user asks to ignore the file:
-- Ask one confirming question, then proceed without the file while still following the coaching style above.
-
-
-${assignmentContext}
-
-User:
-${userText}
-`.trim();
-
-    return await callGemini(apiKey, prompt);
+    // Now just pass the plain user message - history carries the context
+    return await callGemini(apiKey, fullUserText);
   };
 
   provider = new CodeCoachViewProvider(context, onUserMessage);
@@ -627,6 +693,62 @@ ${userText}
           log(`connect failed: ${e?.message ?? String(e)}`);
           vscode.window.showErrorMessage(e?.message ?? "Failed to connect.");
         }
+      },
+    })
+  );
+
+  // Add this block to handle new message types
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider("codecoach.chatView", {
+      resolveWebviewView(webviewView) {
+        webviewView.webview.onDidReceiveMessage(async (msg) => {
+          if (msg?.type === "clearChat") {
+            clearConversationHistory();
+            webviewView.webview.postMessage({ type: "cleared" });
+            return;
+          }
+
+          if (msg?.type === "downloadSummary") {
+            try {
+              const apiKey = await context.secrets.get(GEMINI_KEY_NAME);
+              if (!apiKey) throw new Error("No Gemini API key set.");
+
+              // Ask Gemini to summarize the conversation
+              const summaryPrompt = `Based on our conversation so far, write a structured learning summary report for the student. Include:
+1. Topics Covered
+2. Concepts the Student Demonstrated Understanding Of
+3. Areas That Need More Practice
+4. Key Takeaways
+5. Recommended Next Steps
+
+Write it in a clear, encouraging tone suitable for a student to review after their session.`;
+
+              webviewView.webview.postMessage({ type: "status", text: "Generating summary..." });
+
+              const summary = await callGemini(apiKey, summaryPrompt);
+
+              // Save as a markdown file (VS Code can't write PDFs natively)
+              const saveUri = await vscode.window.showSaveDialog({
+                defaultUri: vscode.Uri.file(`codecoach-summary-${Date.now()}.md`),
+                filters: { "Markdown": ["md"] },
+                title: "Save Learning Summary",
+              });
+
+              if (saveUri) {
+                const content = `# CodeCoach Learning Summary\n\n**Date:** ${new Date().toLocaleDateString()}\n**Assignment:** ${activeSession?.assignment?.title ?? "General Session"}\n\n---\n\n${summary}`;
+                await vscode.workspace.fs.writeFile(saveUri, Buffer.from(content, "utf8"));
+                const doc = await vscode.workspace.openTextDocument(saveUri);
+                await vscode.window.showTextDocument(doc);
+                vscode.window.showInformationMessage("Learning summary saved!");
+              }
+            } catch (err: any) {
+              vscode.window.showErrorMessage(`Failed to generate summary: ${err?.message ?? String(err)}`);
+            } finally {
+              renderStatus();
+            }
+            return;
+          }
+        });
       },
     })
   );
