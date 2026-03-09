@@ -118,6 +118,59 @@ export class CodeCoachViewProvider implements vscode.WebviewViewProvider {
       background: linear-gradient(90deg, #5b2d91, #6e3bbf);
       color: white;
       letter-spacing: 0.3px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .menu-container {
+      position: relative;
+    }
+
+    .menu-btn {
+      background: transparent;
+      border: none;
+      color: white;
+      font-size: 20px;
+      cursor: pointer;
+      padding: 0 6px;
+      line-height: 1;
+      border-radius: 6px;
+    }
+
+    .menu-btn:hover {
+      background: rgba(255,255,255,0.15);
+    }
+
+    .dropdown {
+      display: none;
+      position: absolute;
+      right: 0;
+      top: 110%;
+      background: var(--vscode-menu-background, #2d2d2d);
+      border: 1px solid var(--vscode-menu-border, #444);
+      border-radius: 8px;
+      min-width: 200px;
+      z-index: 999;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+
+    .dropdown.open { display: block; }
+
+    .dropdown-item {
+      padding: 10px 16px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--vscode-menu-foreground, #ccc);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .dropdown-item:hover {
+      background: var(--vscode-menu-selectionBackground, #5b2d91);
+      color: white;
     }
 
     .status {
@@ -203,26 +256,26 @@ export class CodeCoachViewProvider implements vscode.WebviewViewProvider {
       font-size: 13px;
     }
 
-    button:hover {
-      opacity: 0.92;
-    }
-
-    button:disabled {
-      opacity: 0.6;
-      cursor: default;
-    }
+    button:hover { opacity: 0.92; }
+    button:disabled { opacity: 0.6; cursor: default; }
   </style>
   </head>
   <body>
 
-  <div class="header">CodeCoach</div>
-  <div class="status" id="status">${this._lastStatusText}</div>
-
-  <div id="chat"></div>
-
-  <div id="thinking" class="thinking" style="display:none;">
-    CodeCoach is thinking...
+  <div class="header">
+    <span>CodeCoach</span>
+    <div class="menu-container">
+      <button class="menu-btn" id="menuBtn" title="Options">⋯</button>
+      <div class="dropdown" id="dropdown">
+        <div class="dropdown-item" id="downloadSummary">📄 Download Learning Summary</div>
+        <div class="dropdown-item" id="clearChat">🗑️ Clear Chat</div>
+      </div>
+    </div>
   </div>
+
+  <div class="status" id="status">${this._lastStatusText}</div>
+  <div id="chat"></div>
+  <div id="thinking" class="thinking" style="display:none;">CodeCoach is thinking...</div>
 
   <div class="composer">
     <textarea id="input"
@@ -238,19 +291,37 @@ export class CodeCoachViewProvider implements vscode.WebviewViewProvider {
     const sendBtn = document.getElementById("sendBtn");
     const thinking = document.getElementById("thinking");
     const status = document.getElementById("status");
+    const menuBtn = document.getElementById("menuBtn");
+    const dropdown = document.getElementById("dropdown");
 
-    function scrollToBottom() {
-      chat.scrollTop = chat.scrollHeight;
-    }
+    // Toggle dropdown menu
+    menuBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      dropdown.classList.toggle("open");
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener("click", () => dropdown.classList.remove("open"));
+
+    // Menu actions
+    document.getElementById("downloadSummary").addEventListener("click", () => {
+      dropdown.classList.remove("open");
+      vscode.postMessage({ type: "downloadSummary" });
+    });
+
+    document.getElementById("clearChat").addEventListener("click", () => {
+      dropdown.classList.remove("open");
+      vscode.postMessage({ type: "clearChat" });
+    });
+
+    function scrollToBottom() { chat.scrollTop = chat.scrollHeight; }
 
     function addMessage(role, text) {
       const row = document.createElement("div");
       row.className = "row " + role;
-
       const bubble = document.createElement("div");
       bubble.className = "bubble " + role;
       bubble.textContent = text;
-
       row.appendChild(bubble);
       chat.appendChild(row);
       scrollToBottom();
@@ -265,19 +336,14 @@ export class CodeCoachViewProvider implements vscode.WebviewViewProvider {
     function sendCurrent() {
       const text = input.value.trim();
       if (!text) return;
-
       input.value = "";
       addMessage("user", text);
       setBusy(true);
-
       vscode.postMessage({ type: "send", text });
     }
 
     input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        sendCurrent();
-      }
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendCurrent(); }
     });
 
     sendBtn.addEventListener("click", sendCurrent);
@@ -285,13 +351,10 @@ export class CodeCoachViewProvider implements vscode.WebviewViewProvider {
     window.addEventListener("message", (event) => {
       const msg = event.data;
       if (!msg || !msg.type) return;
-
       if (msg.type === "assistant") addMessage("assistant", msg.text || "");
       if (msg.type === "status") status.textContent = msg.text || "";
-      if (msg.type === "done") {
-        setBusy(false);
-        input.focus();
-      }
+      if (msg.type === "done") { setBusy(false); input.focus(); }
+      if (msg.type === "cleared") { chat.innerHTML = ""; }
     });
 
     vscode.postMessage({ type: "ready" });
