@@ -375,7 +375,12 @@ export async function getSubmissionsForAssignment(assignmentId: string) {
   }));
 }
 
-export async function getSubmissionsForStudentInCourse(courseId: string, studentId: string) {
+export async function getSubmissionsForStudentInCourse(
+  courseId: string,
+  studentEmail: string
+) {
+  const studentId = await getUserIdByEmail(studentEmail);
+
   const { data, error } = await supabase
     .from("submissions")
     .select("*, assignments!inner(course_id)")
@@ -384,7 +389,14 @@ export async function getSubmissionsForStudentInCourse(courseId: string, student
     .order("created_at", { ascending: false });
 
   if (error) throw error;
-  return data ?? [];
+
+  return (data ?? []).map((s: any) => ({
+    id: s.id,
+    assignmentId: s.assignment_id,
+    submittedAtISO: s.created_at,
+    traceCount: s.trace_count ?? 0,
+    summarySnippet: s.summary ?? "",
+  }));
 }
 
 /* ---------- LEARNING PROFILES ---------- */
@@ -415,7 +427,13 @@ export async function getCourseProfile(courseId: string, studentId: string) {
     .maybeSingle();
 
   if (error) throw error;
-  return data;
+
+  if (!data) return null;
+
+  return {
+    ...data,
+    updatedAtISO: data.updated_at,
+  };
 }
 
 export async function upsertLearningProfile(courseId: string, studentId: string, patch: any) {

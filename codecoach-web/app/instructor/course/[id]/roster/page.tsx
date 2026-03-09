@@ -33,6 +33,12 @@ export default function InstructorRosterPage() {
     load();
   }, [courseId]);
 
+  function openStudent(email: string) {
+    router.push(
+      `/instructor/course/${courseId}/student/${encodeURIComponent(email)}`
+    );
+  }
+
   return (
     <RequireAuth>
       <AppShell title="Roster">
@@ -58,14 +64,25 @@ export default function InstructorRosterPage() {
               <div className="text-sm font-semibold">Students</div>
 
               {roster.length === 0 ? (
-                <div className="mt-2 text-sm text-black/60">No students enrolled yet.</div>
+                <div className="mt-2 text-sm text-black/60">
+                  No students enrolled yet.
+                </div>
               ) : (
                 <div className="mt-3 grid gap-2">
                   {roster.map((row, idx) => (
-                    <div key={row.id ?? idx} className="rounded-xl border border-black/10 p-3">
-                      <div className="font-semibold">{row.student_email ?? row.email ?? "(unknown)"}</div>
+                    <div
+                      key={row.id ?? idx}
+                      onClick={() => openStudent(row.email)}
+                      className="rounded-xl border border-black/10 p-3 cursor-pointer hover:bg-black/5 transition"
+                    >
+                      <div className="font-semibold">
+                        {row.email ?? "(unknown)"}
+                      </div>
+
                       <div className="text-xs text-black/60">
-                        {row.created_at ? new Date(row.created_at).toLocaleString() : ""}
+                        {row.created_at
+                          ? new Date(row.created_at).toLocaleString()
+                          : ""}
                       </div>
                     </div>
                   ))}
