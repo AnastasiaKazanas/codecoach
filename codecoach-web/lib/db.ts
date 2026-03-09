@@ -418,7 +418,9 @@ export async function getLearningProfile(studentEmail: string) {
 }
 
 // Instructor-side helper if you already have studentId
-export async function getCourseProfile(courseId: string, studentId: string) {
+export async function getCourseProfile(courseId: string, studentEmail: string) {
+  const studentId = await getUserIdByEmail(studentEmail);
+
   const { data, error } = await supabase
     .from("learning_profiles")
     .select("*")

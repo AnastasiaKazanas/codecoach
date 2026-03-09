@@ -477,9 +477,17 @@ async function readWorkspaceFile(relativePath: string): Promise<string | null> {
 function readActiveEditorFile(): string | null {
   const editor = vscode.window.activeTextEditor ?? lastActiveEditor;
   if (!editor) return null;
-  return editor.document.getText();
-}
 
+  const MAX_CHARS = 10000;
+
+  const text = editor.document.getText();
+
+  if (text.length > MAX_CHARS) {
+    return text.slice(0, MAX_CHARS) + "\n\n...[file truncated]";
+  }
+
+  return text;
+}
 // Get the name of the currently open/active file in the editor
 function getActiveFileName(): string | null {
   const editor = vscode.window.activeTextEditor ?? lastActiveEditor;
@@ -541,9 +549,26 @@ Instructions:\n${activeSession.assignment.instructions}`
 
     // Re-read the active file on EVERY message so it stays up to date
     const fileContents = readActiveEditorFile();
-    const fileName = getActiveFileName();
+    const editor = vscode.window.activeTextEditor ?? lastActiveEditor;
+
+    const fileName = editor?.document.fileName.split("/").pop() ?? null;
+    const language = editor?.document.languageId ?? "unknown";
+    const fullPath = editor?.document.fileName ?? "";
+
     const fileContext = fileContents
-      ? `\n\n[Student's current file: ${fileName}]\n\`\`\`\n${fileContents}\n\`\`\`\n\n`
+      ? `
+
+    [Student's current file]
+
+    File: ${fileName}
+    Language: ${language}
+    Path: ${fullPath}
+
+    \`\`\`${language}
+    ${fileContents}
+    \`\`\`
+
+    `
       : "";
     
     const fullUserText = fileContext + userText;
