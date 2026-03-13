@@ -20,7 +20,7 @@ export class CodeCoachViewProvider implements vscode.WebviewViewProvider {
     private readonly context: vscode.ExtensionContext,
     private readonly onUserMessage: (
       userText: string,
-      contextText: string
+      code: string
     ) => Promise<string>
   ) {}
 
@@ -45,8 +45,10 @@ export class CodeCoachViewProvider implements vscode.WebviewViewProvider {
           const editor = vscode.window.activeTextEditor;
           const contextText = editor?.document.getText() ?? "";
 
-          const reply = await this.onUserMessage(msg.text, contextText);
-
+          const reply = await this.onUserMessage(
+            msg.text,
+            contextText
+          );
           webviewView.webview.postMessage({
             type: "assistant",
             text: reply,

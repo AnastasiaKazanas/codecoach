@@ -547,14 +547,26 @@ Instructions:\n${activeSession.assignment.instructions}`
     }
 
     // Re-read the active file on EVERY message so it stays up to date
-    const fileContents = readActiveEditorFile();
-    const editor = vscode.window.activeTextEditor ?? lastActiveEditor;
+    const editor = vscode.window.activeTextEditor;
+    const document = editor?.document;
+
+    let codeSnippet = "";
+
+    if (editor && document) {
+      const cursorLine = editor.selection.active.line;
+      const start = Math.max(0, cursorLine - 20);
+      const end = Math.min(document.lineCount, cursorLine + 20);
+
+      codeSnippet = document.getText(
+        new vscode.Range(start, 0, end, 0)
+      );
+    }
 
     const fileName = editor?.document.fileName.split("/").pop() ?? null;
     const language = editor?.document.languageId ?? "unknown";
     const fullPath = editor?.document.fileName ?? "";
 
-    const fileContext = fileContents
+    const fileContext = codeSnippet
       ? `
 
     [Student's current file]
@@ -564,16 +576,28 @@ Instructions:\n${activeSession.assignment.instructions}`
     Path: ${fullPath}
 
     \`\`\`${language}
-    ${fileContents}
+    ${codeSnippet}
     \`\`\`
 
     `
       : "";
     
-    const fullUserText = fileContext + userText;
+    const response = await fetch(`${getWebBaseUrl()}/api/chat/codecoach`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${await context.secrets.get(SUPABASE_JWT_KEY)}`
+      },
+      body: JSON.stringify({
+        sessionId: activeSession?.sessionId,
+        message: userText + fileContext,
+        code: codeSnippet,
+        cursorLine: editor?.selection.active.line ?? null
+      })
+    });
 
-    // Now just pass the plain user message - history carries the context
-    return await callGemini(apiKey, fullUserText);
+    const data: any = await response.json();
+    return data.reply;
   };
 
   provider = new CodeCoachViewProvider(context, onUserMessage);
