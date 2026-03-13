@@ -47,7 +47,7 @@ async function callGemini(messages: any[], apiKey: string) {
   const genAI = new GoogleGenerativeAI(apiKey);
 
   const model = genAI.getGenerativeModel({
-    model: "gemini-2.0-flash"
+    model: "gemini-1.5-flash"
   });
 
   const result = await model.generateContent({
@@ -300,7 +300,7 @@ export async function POST(req: Request) {
 
     // Current student context
     geminiMessages.push({
-      role: "user",
+      role: "user", 
       parts: [
         {
           text: `
