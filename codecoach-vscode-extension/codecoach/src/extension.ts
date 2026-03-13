@@ -296,7 +296,6 @@ async function maybeInstallStarterFromBootstrap(
       fs.mkdirSync(assignmentsDir);
     }
 
-    // 🔥 Properly compute folder name
     const rawTitle =
       activeSession?.assignment?.title || "assignment";
 
@@ -593,7 +592,6 @@ Instructions:\n${activeSession.assignment.instructions}`
     isStudentSignedIn = !!savedJwt;
     isAccountConnected = !!savedToken && !!savedGemini;
 
-    // 🔥 RESTORE ACTIVE SESSION AFTER RELOAD
     const savedSession = context.globalState.get<ActiveSession>(
       ACTIVE_SESSION_KEY
     );
