@@ -271,8 +271,17 @@ export async function POST(req: Request) {
     await supabase.from("messages").insert({
       session_id: sessionId,
       role: "user",
-      content: message
+      content: `
+    ${message}
+
+    Student cursor line:
+    ${cursorLine ?? "unknown"}
+
+    Student's current code:
+    ${code || "No code provided"}
+    `
     });
+
 
     const { data: history } = await supabase
       .from("messages")
@@ -298,21 +307,15 @@ export async function POST(req: Request) {
       }
     }
 
-    // Current student context
     geminiMessages.push({
-      role: "user", 
+      role: "user",
       parts: [
         {
           text: `
-Student message:
-${message}
+    Current student code:
 
-Student cursor line:
-${cursorLine ?? "unknown"}
-
-Student's current code:
-${code || "No code provided"}
-`
+    ${code || "No code provided"}
+    `
         }
       ]
     });

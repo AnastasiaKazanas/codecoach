@@ -477,7 +477,7 @@ function readActiveEditorFile(): string | null {
   const editor = vscode.window.activeTextEditor ?? lastActiveEditor;
   if (!editor) return null;
 
-  const MAX_CHARS = 10000;
+  const MAX_CHARS = 100000;
 
   const text = editor.document.getText();
 
@@ -553,13 +553,8 @@ Instructions:\n${activeSession.assignment.instructions}`
     let codeSnippet = "";
 
     if (editor && document) {
-      const cursorLine = editor.selection.active.line;
-      const start = Math.max(0, cursorLine - 20);
-      const end = Math.min(document.lineCount, cursorLine + 20);
-
-      codeSnippet = document.getText(
-        new vscode.Range(start, 0, end, 0)
-      );
+      // Read the entire file instead of a small window around the cursor
+      codeSnippet = document.getText();
     }
 
     const fileName = editor?.document.fileName.split("/").pop() ?? null;
@@ -590,7 +585,7 @@ Instructions:\n${activeSession.assignment.instructions}`
       },
       body: JSON.stringify({
         sessionId: activeSession?.sessionId,
-        message: userText + fileContext,
+        message: userText,
         code: codeSnippet,
         cursorLine: editor?.selection.active.line ?? null
       })
