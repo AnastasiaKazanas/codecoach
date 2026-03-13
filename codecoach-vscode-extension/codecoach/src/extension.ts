@@ -399,7 +399,7 @@ async function fetchBootstrapFromWeb(
 
 async function callGemini(apiKey: string, prompt: string) {
   const url =
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent` +
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent` +
     `?key=${encodeURIComponent(apiKey)}`;
 
   // Add the new user message to history
